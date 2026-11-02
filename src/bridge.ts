@@ -16,10 +16,12 @@ interface Job {
   cleanup: () => void;
 }
 
+const uiStages = new Set(['new_chat', 'editor', 'insert', 'send', 'reply']);
 const providerErrors: Record<string, string> = {
   login_required: 'Sign into ChatGPT manually, then pair the tab again.',
   provider_blocked: 'ChatGPT displayed a limit or challenge. Resolve it manually; no retries were made.',
   ui_changed: 'ChatGPT UI could not be operated safely. Inspect the selected tab.',
+  tab_not_attached: 'The extension is not attached to the selected tab. Reload the ChatGPT tab, then pair again.',
   browser_busy: 'The selected tab is already running a request.',
   cancelled: 'Browser request was cancelled.',
 };
@@ -64,7 +66,8 @@ export class BrowserBridge {
         this.dispatch();
       } else if (message.type === 'error') {
         const code = typeof message.code === 'string' && Object.hasOwn(providerErrors, message.code) ? message.code : 'ui_changed';
-        this.disconnect(new GatewayError(502, code, providerErrors[code] ?? 'Browser error.'));
+        const stage = code === 'ui_changed' && uiStages.has(message.stage) ? ` Failed step: ${message.stage}.` : '';
+        this.disconnect(new GatewayError(502, code, `${providerErrors[code] ?? 'Browser error.'}${stage}`));
       } else {
         this.disconnect(new GatewayError(502, 'invalid_browser_reply', 'Malformed browser response. Pair again.'));
       }

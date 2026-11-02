@@ -1,5 +1,6 @@
+export type UiStage = 'new_chat' | 'editor' | 'insert' | 'send' | 'reply';
 export class BrowserError extends Error {
-  constructor(public code: 'login_required' | 'provider_blocked' | 'ui_changed' | 'browser_busy' | 'cancelled') { super(code); }
+  constructor(public code: 'login_required' | 'provider_blocked' | 'ui_changed' | 'browser_busy' | 'cancelled', public stage?: UiStage) { super(stage ? `${code}:${stage}` : code); }
 }
 
 export interface AdapterClock {
@@ -47,8 +48,9 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
   check();
   if (!stopped(document)) throw new BrowserError('browser_busy');
   const newChat = find(document, 'a[data-testid="create-new-chat-button"], button[data-testid="create-new-chat-button"], a[href="/"][aria-label*="New chat"], a[href="/"][data-discover]');
-  if (!newChat) throw new BrowserError('ui_changed');
-  newChat.click();
+  const fresh = !document.querySelector('[data-message-author-role]') && find(document, '#prompt-textarea');
+  if (newChat) newChat.click();
+  else if (!fresh) throw new BrowserError('ui_changed', 'new_chat');
   const resetDeadline = time.now() + 15_000;
   let editor: HTMLElement | undefined;
   while (time.now() < resetDeadline) {
@@ -58,11 +60,11 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
     editor = undefined;
     await time.wait(signal);
   }
-  if (!editor) throw new BrowserError('ui_changed');
+  if (!editor) throw new BrowserError('ui_changed', 'editor');
   editor.focus();
   if (editor.tagName === 'TEXTAREA') {
     const setter = Object.getOwnPropertyDescriptor(document.defaultView!.HTMLTextAreaElement.prototype, 'value')?.set;
-    if (!setter) throw new BrowserError('ui_changed');
+    if (!setter) throw new BrowserError('ui_changed', 'insert');
     setter.call(editor, prompt);
     editor.dispatchEvent(new document.defaultView!.Event('input', { bubbles: true }));
   } else {
@@ -71,10 +73,10 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
     range.selectNodeContents(editor);
     selection?.removeAllRanges();
     selection?.addRange(range);
-    if (!document.execCommand('insertText', false, prompt)) throw new BrowserError('ui_changed');
+    if (!document.execCommand('insertText', false, prompt)) throw new BrowserError('ui_changed', 'insert');
   }
   const inserted = editor.tagName === 'TEXTAREA' ? (editor as HTMLTextAreaElement).value : editor.innerText;
-  if (inserted.replaceAll('\r\n', '\n').trim() !== prompt.replaceAll('\r\n', '\n').trim()) throw new BrowserError('ui_changed');
+  if (inserted.replaceAll('\r\n', '\n').trim() !== prompt.replaceAll('\r\n', '\n').trim()) throw new BrowserError('ui_changed', 'insert');
   const sendDeadline = time.now() + 5000;
   let sent = false;
   while (time.now() < sendDeadline) {
@@ -83,7 +85,7 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
     if (send && !send.disabled) { send.click(); sent = true; break; }
     await time.wait(signal);
   }
-  if (!sent) throw new BrowserError('ui_changed');
+  if (!sent) throw new BrowserError('ui_changed', 'send');
   const deadline = time.now() + 170_000;
   let previous = '';
   let stableSince = time.now();
@@ -96,12 +98,12 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
       let complete = false;
       try { const parsed = JSON.parse(text); complete = parsed !== null && typeof parsed === 'object'; } catch { /* Still generating or a malformed final reply. */ }
       if (text && stopped(document) && time.now() - stableSince >= 2000) {
-        if (!complete) throw new BrowserError('ui_changed');
+        if (!complete) throw new BrowserError('ui_changed', 'reply');
         return text;
       }
       await time.wait(signal);
     }
-    throw new BrowserError('ui_changed');
+    throw new BrowserError('ui_changed', 'reply');
   } catch (error) {
     stopChat(document);
     throw error;

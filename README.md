@@ -73,6 +73,16 @@ $env:BROWSER_HARNESS_BRIDGE_TOKEN = node -e "process.stdout.write(require('crypt
 npm start
 ```
 
+Windows shortcut: `scripts/windows/setup-and-start.ps1` clones or updates
+`%USERPROFILE%\browser-harness`, builds it, starts the gateway, and copies the bridge
+token to your clipboard. Unlike the gateway itself, this helper stores both keys in
+`%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete that file
+to rotate them. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\setup-and-start.ps1
+```
+
 The server binds to `127.0.0.1` only. `BROWSER_HARNESS_PORT` optionally changes
 port 4318. Keys must each contain at least 32 characters. No keys are generated,
 printed, or stored on disk by the gateway itself. Keep the terminal environment
@@ -91,6 +101,10 @@ available: separate shells need the same environment variables, not new keys.
 Optional hardening: copy the installed extension ID from `chrome://extensions`
 and set `BROWSER_HARNESS_EXTENSION_ID` before starting the gateway. This restricts
 WebSocket pairing to that extension origin as well as requiring the bridge token.
+
+If a request fails with `tab_not_attached`, the tab was opened before the
+extension loaded. A `ui_changed` error names the step that failed (`new_chat`,
+`editor`, `insert`, `send`, or `reply`), so you can tell which selector needs updating.
 
 After extension installation or reload, refresh the ChatGPT tab to load the content
 script. Restart the gateway after source changes and rebuild/reload the extension
