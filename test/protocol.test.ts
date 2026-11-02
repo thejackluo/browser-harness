@@ -70,3 +70,27 @@ test('respects required/none/serial tool choice', () => {
     assert.throws(() => parseReply(JSON.stringify({ nonce: prepared.nonce, type: 'tool_calls', tool_calls: [{ name: 'read_file', arguments: { path: 'x' } }, { name: 'read_file', arguments: { path: 'y' } }] }), prepared));
   }
 });
+
+test('permits literal reference-like keys in const, enum and property names', () => {
+  const parameters = {
+    type: 'object',
+    properties: { literal: { const: { $ref: 'data' } }, choice: { enum: [{ $id: 'data' }] }, $ref: { type: 'string' } },
+    required: ['literal', 'choice', '$ref'], additionalProperties: false,
+  };
+  const prepared = prepareRequest({ ...base, tools: [{ ...tool, function: { ...tool.function, parameters } }] });
+  const args = { literal: { $ref: 'data' }, choice: { $id: 'data' }, $ref: 'data' };
+  const result = parseReply(JSON.stringify({ nonce: prepared.nonce, type: 'tool_calls', tool_calls: [{ name: 'read_file', arguments: args }] }), prepared);
+  assert.deepEqual(JSON.parse(result.tool_calls![0]!.function.arguments), args);
+});
+
+test('still rejects real references inside nested schema positions', () => {
+  for (const parameters of [
+    { type: 'object', properties: { nested: { $ref: '#' } } },
+    { type: 'object', properties: { list: { type: 'array', items: { $ref: '#' } } } },
+    { type: 'object', allOf: [{ $ref: '#' }] },
+    { type: 'object', additionalProperties: { $ref: '#' } },
+    { type: 'object', dependencies: { field: { $ref: '#' } } },
+  ]) {
+    assert.throws(() => prepareRequest({ ...base, tools: [{ ...tool, function: { ...tool.function, parameters } }] }), /may not use/);
+  }
+});

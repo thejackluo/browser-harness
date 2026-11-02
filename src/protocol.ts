@@ -114,10 +114,18 @@ function validateHistory(messages: Message[]): void {
 
 function checkSchema(value: unknown, depth = 0): void {
   if (depth > 20) invalid('Tool schema is too deeply nested.');
-  if (!value || typeof value !== 'object') return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
   for (const [key, child] of Object.entries(value)) {
     if (['$ref', '$async', '$id'].includes(key)) invalid('Tool schemas may not use $ref, $id or $async.');
-    checkSchema(child, depth + 1);
+    if (['properties', 'patternProperties', 'definitions', 'dependencies'].includes(key)) {
+      if (child && typeof child === 'object') {
+        for (const schema of Object.values(child)) checkSchema(schema, depth + 1);
+      }
+    } else if (['items', 'allOf', 'anyOf', 'oneOf'].includes(key)) {
+      for (const schema of Array.isArray(child) ? child : [child]) checkSchema(schema, depth + 1);
+    } else if (['additionalProperties', 'additionalItems', 'contains', 'propertyNames', 'not', 'if', 'then', 'else'].includes(key)) {
+      checkSchema(child, depth + 1);
+    }
   }
 }
 
