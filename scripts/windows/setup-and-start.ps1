@@ -4,8 +4,16 @@ $repo = Join-Path $env:USERPROFILE 'browser-harness'
 $keyDir = Join-Path $env:USERPROFILE '.browser-harness'
 $keyFile = Join-Path $keyDir 'keys.json'
 
-if (Test-Path $repo) { git -C $repo checkout main; git -C $repo pull --ff-only }
-else { git clone https://github.com/thejackluo/browser-harness.git $repo }
+if (Test-Path $repo) {
+  git -C $repo checkout main
+  if ($LASTEXITCODE) { throw 'git checkout main failed; commit or stash local changes first' }
+  git -C $repo pull --ff-only
+  if ($LASTEXITCODE) { throw 'git pull failed' }
+}
+else {
+  git clone https://github.com/thejackluo/browser-harness.git $repo
+  if ($LASTEXITCODE) { throw 'git clone failed' }
+}
 Set-Location $repo
 npm ci --ignore-scripts
 if ($LASTEXITCODE) { throw 'npm ci failed' }
