@@ -182,3 +182,19 @@ test('provider errors expose no raw page data and disarm the bridge', async t =>
   assert.ok(!(await response.text()).includes('private page data'));
   assert.equal(gateway.bridge.connected, false);
 });
+
+for (const [code, stage, expected] of [['ui_changed', 'new_chat', /Failed step: new_chat\./], ['ui_changed', '<script>', /Inspect the selected tab\."/], ['tab_not_attached', undefined, /Reload the ChatGPT tab/]] as const) {
+  test(`reports ${code} ${stage ?? ''} with an allowlisted hint`, async t => {
+    const { post, pair } = await setup(t);
+    const socket = await pair();
+    socket.on('message', data => {
+      const message = JSON.parse(data.toString());
+      if (message.type === 'run') socket.send(JSON.stringify({ type: 'error', id: message.id, code, stage }));
+    });
+    const response = await post();
+    assert.equal(response.status, 502);
+    const body = await response.text();
+    assert.match(body, expected);
+    assert.ok(!body.includes('<script>'));
+  });
+}

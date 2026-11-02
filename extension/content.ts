@@ -15,7 +15,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   active = { id: message.id, controller };
   void runChat(document, message.prompt, controller.signal)
     .then(text => respond({ type: 'result', id: message.id, text }))
-    .catch(error => respond({ type: 'error', id: message.id, code: error instanceof BrowserError ? error.code : 'ui_changed' }))
+    .catch(error => respond({ type: 'error', id: message.id, code: error instanceof BrowserError ? error.code : 'ui_changed', stage: error instanceof BrowserError ? error.stage : undefined }))
     .finally(() => { active = undefined; });
   return true;
 });

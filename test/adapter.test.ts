@@ -48,9 +48,15 @@ test('does not accept stable text while the stop control is visible', async () =
   assert.ok(ticks >= 22);
 });
 
-test('fails closed when the fresh-chat selector is missing', async () => {
+test('fails closed when the fresh-chat selector is missing from an existing conversation', async () => {
+  const f = fixture(); f.document.querySelector('a')!.remove(); f.assistant('old conversation');
+  await assert.rejects(runChat(f.document, 'hello', new AbortController().signal, f.clock), /ui_changed:new_chat/);
+});
+
+test('uses an already-fresh chat when the new-chat control is hidden', async () => {
   const f = fixture(); f.document.querySelector('a')!.remove();
-  await assert.rejects(runChat(f.document, 'hello', new AbortController().signal, f.clock), /ui_changed/);
+  f.document.querySelector('button')!.addEventListener('click', () => f.assistant('{"type":"final","content":"done"}'));
+  assert.equal(JSON.parse(await runChat(f.document, 'hello', new AbortController().signal, f.clock)).content, 'done');
 });
 
 test('stops on visible provider challenges rather than attempting a bypass', async () => {

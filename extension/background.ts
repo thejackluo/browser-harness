@@ -48,7 +48,7 @@ async function pair(port: number, token: string, selectedTab: number): Promise<v
             status = 'Armed — requests create fresh chats in this tab';
           }
         })
-        .catch(() => { if (peer.readyState === WebSocket.OPEN) peer.send(JSON.stringify({ type: 'error', id: message.id, code: 'ui_changed' })); })
+        .catch(() => { if (peer.readyState === WebSocket.OPEN) peer.send(JSON.stringify({ type: 'error', id: message.id, code: 'tab_not_attached' })); })
         .finally(() => { busy = false; });
     }
   };
