@@ -15,15 +15,17 @@ Your agent harness
 
 This is an initial implementation, **not a verified substitute for the official
 model API**. Automated tests use simulated browser peers and DOM fixtures, not
-paid accounts. Live ChatGPT compatibility, model availability, and quota accounting
-must be verified in your own account. Nothing here guarantees unlimited usage,
+paid accounts. One live run on a ChatGPT Plus web account (October 2026 UI) passed a
+text completion, the `read_project_readme` two-turn tool loop, client cancellation
+(generation stopped, tab disarmed) and re-pairing. ChatGPT changes its markup often;
+model identity, availability, and quota accounting remain unverified. Nothing here guarantees unlimited usage,
 avoids subscription limits, or exposes the ordinary chat allowance as an official API.
 
 ## Current scope
 
 | Feature | Status |
 | --- | --- |
-| ChatGPT browser text | Adapter implemented; live account verification required |
+| ChatGPT browser text | Live-tested once on a Plus account; markup changes can break it |
 | `GET /v1/models`, `POST /v1/chat/completions` | Implemented subset described below |
 | Tool calls | Strict JSON emulation; validated names, arguments, IDs and results |
 | Streaming | Buffered SSE after final reply validation, not live token streaming |

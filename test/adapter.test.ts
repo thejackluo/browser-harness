@@ -110,3 +110,32 @@ test('honors cancellation before changing a tab', async () => {
   const f = fixture(); const controller = new AbortController(); controller.abort();
   await assert.rejects(runChat(f.document, 'hello', controller.signal, f.clock), /cancelled/);
 });
+
+test('operates the current ChatGPT composer and turn markup', async () => {
+  const dom = new JSDOM('<nav><button aria-label="New chat" type="button"></button></nav><div data-chatgpt-search-unit-key="old:1:assistant" hidden><div data-markdown-copy="contents">old</div></div><form><div aria-label="Ask ChatGPT" contenteditable="true" role="textbox"></div><button aria-label="Send" type="button"></button></form>');
+  const { document } = dom.window;
+  dom.window.HTMLElement.prototype.getClientRects = function () { return (this.closest('[hidden]') ? [] : [{}]) as unknown as DOMRectList; };
+  Object.defineProperty(dom.window.HTMLElement.prototype, 'innerText', { get(this: HTMLElement) { return this.textContent; } });
+  document.execCommand = (_command: string, _ui?: boolean, value?: string) => { (document.activeElement as HTMLElement).textContent = value ?? ''; return true; };
+  let now = 0;
+  let ticks = 0;
+  let turn: HTMLElement | undefined;
+  const clock: AdapterClock = { now: () => now, wait: async signal => {
+    signal.throwIfAborted(); now += 250; ticks++;
+    if (ticks === 6) {
+      turn!.setAttribute('data-talvt-turn-state', 'complete');
+      document.querySelector('form button[aria-label="Stop"]')?.remove();
+    }
+  } };
+  document.querySelector<HTMLElement>('[aria-label="Send"]')!.addEventListener('click', () => {
+    turn = document.createElement('div');
+    turn.setAttribute('data-talvt-turn-state', 'in_progress');
+    turn.innerHTML = '<div data-chatgpt-search-unit-key="new:1:assistant"><h4>ChatGPT said:</h4><div data-markdown-copy="contents"><p>{"type":"final","content":"done"}</p></div></div>';
+    document.body.append(turn);
+    const stop = document.createElement('button'); stop.setAttribute('aria-label', 'Stop'); document.querySelector('form')!.append(stop);
+  });
+  const text = await runChat(document, 'hello', new AbortController().signal, clock);
+  assert.equal(document.querySelector('[role="textbox"]')!.textContent, 'hello');
+  assert.equal(JSON.parse(text).content, 'done');
+  assert.ok(ticks >= 13);
+});

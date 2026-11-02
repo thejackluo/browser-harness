@@ -24,39 +24,55 @@ function visible(element: Element): boolean {
 function find<T extends HTMLElement>(document: Document, selectors: string): T | undefined {
   return [...document.querySelectorAll<T>(selectors)].find(visible);
 }
+const EDITOR = '#prompt-textarea, form div[contenteditable="true"][role="textbox"]';
+const NEW_CHAT = 'a[data-testid="create-new-chat-button"], button[data-testid="create-new-chat-button"], a[href="/"][aria-label*="New chat"], a[href="/"][data-discover], button[aria-label="New chat"]';
+const SEND = 'button[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send message"], form button[aria-label="Send"]';
+function newChatButton(document: Document): HTMLElement | undefined {
+  return find(document, NEW_CHAT) ??
+    [...document.querySelectorAll<HTMLElement>('nav button')].find(el => visible(el) && el.textContent?.trim() === 'New chat');
+}
+const STOP = '[data-testid="stop-button"], button[aria-label="Stop generating"], button[aria-label="Stop streaming"], form button[aria-label="Stop"]';
+const MESSAGE = '[data-message-author-role], [data-chatgpt-search-unit-key]';
+const ASSISTANT = '[data-message-author-role="assistant"], [data-chatgpt-search-unit-key$=":assistant"]';
+function messageCount(document: Document): number {
+  return [...document.querySelectorAll(MESSAGE)].filter(visible).length;
+}
+function normalize(text: string): string {
+  return text.replaceAll('\r\n', '\n').replace(/\n+/g, '\n').trim();
+}
 function blocked(document: Document): void {
   const alerts = [...document.querySelectorAll('[role="alert"], [role="dialog"]')].filter(visible).map(el => el.textContent ?? '').join(' ');
   if (/verify you are human|unusual activity|usage limit|reached.*limit|too many requests|try again later/i.test(alerts)) throw new BrowserError('provider_blocked');
   if (find(document, 'a[href*="/auth/login"], button[data-testid="login-button"]')) throw new BrowserError('login_required');
 }
 function assistantText(document: Document): string {
-  const messages = [...document.querySelectorAll('[data-message-author-role="assistant"]')].filter(visible);
+  const messages = [...document.querySelectorAll(ASSISTANT)].filter(visible);
   const last = messages.at(-1);
   if (!last) return '';
-  const markdown = [...last.querySelectorAll('.markdown')].filter(visible).at(-1);
+  const markdown = [...last.querySelectorAll('.markdown, [data-markdown-copy="contents"]')].filter(visible).at(-1);
   if (!markdown) return '';
   const copy = markdown.cloneNode(true) as HTMLElement;
   copy.querySelectorAll('button, svg, [aria-hidden="true"]').forEach(el => el.remove());
   return (copy.textContent ?? '').trim();
 }
 function stopped(document: Document): boolean {
-  return !find(document, '[data-testid="stop-button"], button[aria-label="Stop generating"], button[aria-label="Stop streaming"]');
+  return !find(document, STOP) && !document.querySelector('[data-talvt-turn-state="in_progress"]');
 }
 
 export async function runChat(document: Document, prompt: string, signal: AbortSignal, time: AdapterClock = clock): Promise<string> {
   const check = () => { if (signal.aborted) throw new BrowserError('cancelled'); blocked(document); };
   check();
   if (!stopped(document)) throw new BrowserError('browser_busy');
-  const newChat = find(document, 'a[data-testid="create-new-chat-button"], button[data-testid="create-new-chat-button"], a[href="/"][aria-label*="New chat"], a[href="/"][data-discover]');
-  const fresh = !document.querySelector('[data-message-author-role]') && find(document, '#prompt-textarea');
+  const newChat = newChatButton(document);
+  const fresh = messageCount(document) === 0 && find(document, EDITOR);
   if (newChat) newChat.click();
   else if (!fresh) throw new BrowserError('ui_changed', 'new_chat');
   const resetDeadline = time.now() + 15_000;
   let editor: HTMLElement | undefined;
   while (time.now() < resetDeadline) {
     check();
-    editor = find(document, '#prompt-textarea');
-    if (editor && document.querySelectorAll('[data-message-author-role]').length === 0 && stopped(document)) break;
+    editor = find(document, EDITOR);
+    if (editor && messageCount(document) === 0 && stopped(document)) break;
     editor = undefined;
     await time.wait(signal);
   }
@@ -76,12 +92,12 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
     if (!document.execCommand('insertText', false, prompt)) throw new BrowserError('ui_changed', 'insert');
   }
   const inserted = editor.tagName === 'TEXTAREA' ? (editor as HTMLTextAreaElement).value : editor.innerText;
-  if (inserted.replaceAll('\r\n', '\n').trim() !== prompt.replaceAll('\r\n', '\n').trim()) throw new BrowserError('ui_changed', 'insert');
+  if (normalize(inserted) !== normalize(prompt)) throw new BrowserError('ui_changed', 'insert');
   const sendDeadline = time.now() + 5000;
   let sent = false;
   while (time.now() < sendDeadline) {
     check();
-    const send = find<HTMLButtonElement>(document, 'button[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send message"]');
+    const send = find<HTMLButtonElement>(document, SEND);
     if (send && !send.disabled) { send.click(); sent = true; break; }
     await time.wait(signal);
   }
@@ -111,5 +127,5 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
 }
 
 export function stopChat(document: Document): void {
-  find(document, '[data-testid="stop-button"], button[aria-label="Stop generating"], button[aria-label="Stop streaming"]')?.click();
+  find(document, STOP)?.click();
 }
