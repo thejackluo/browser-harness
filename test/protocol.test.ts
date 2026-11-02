@@ -118,3 +118,16 @@ test('compiles draft 2020-12 and draft-07 tool schemas and rejects unknown draft
   }
   assert.throws(() => prepareRequest({ ...base, tools: [schema('https://example.com/schema')] }), /draft/);
 });
+
+test('rejects references nested in draft 2020-12 subschema keywords', () => {
+  const draft = 'https://json-schema.org/draft/2020-12/schema';
+  for (const extra of [
+    { properties: { list: { type: 'array', prefixItems: [{ $ref: '#' }] } } },
+    { dependentSchemas: { path: { $ref: '#' } } },
+    { unevaluatedProperties: { $ref: '#' } },
+    { properties: { list: { type: 'array', unevaluatedItems: { $dynamicRef: '#x' } } } },
+  ]) {
+    const parameters = { $schema: draft, type: 'object', ...extra };
+    assert.throws(() => prepareRequest({ ...base, tools: [{ ...tool, function: { ...tool.function, parameters } }] }), /\$ref/);
+  }
+});

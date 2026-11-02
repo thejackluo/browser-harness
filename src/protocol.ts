@@ -137,14 +137,14 @@ function checkSchema(value: unknown, depth = 0): void {
   if (depth > 20) invalid('Tool schema is too deeply nested.');
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
   for (const [key, child] of Object.entries(value)) {
-    if (['$ref', '$async', '$id'].includes(key)) invalid('Tool schemas may not use $ref, $id or $async.');
-    if (['properties', 'patternProperties', 'definitions', '$defs', 'dependencies'].includes(key)) {
+    if (['$ref', '$async', '$id', '$dynamicRef', '$recursiveRef'].includes(key)) invalid('Tool schemas may not use $ref, $id or $async.');
+    if (['properties', 'patternProperties', 'definitions', '$defs', 'dependencies', 'dependentSchemas'].includes(key)) {
       if (child && typeof child === 'object') {
         for (const schema of Object.values(child)) checkSchema(schema, depth + 1);
       }
-    } else if (['items', 'allOf', 'anyOf', 'oneOf'].includes(key)) {
+    } else if (['items', 'prefixItems', 'allOf', 'anyOf', 'oneOf'].includes(key)) {
       for (const schema of Array.isArray(child) ? child : [child]) checkSchema(schema, depth + 1);
-    } else if (['additionalProperties', 'additionalItems', 'contains', 'propertyNames', 'not', 'if', 'then', 'else'].includes(key)) {
+    } else if (['additionalProperties', 'additionalItems', 'unevaluatedProperties', 'unevaluatedItems', 'contains', 'propertyNames', 'not', 'if', 'then', 'else'].includes(key)) {
       checkSchema(child, depth + 1);
     }
   }
