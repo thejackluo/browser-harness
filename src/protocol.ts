@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { Ajv, type ValidateFunction } from 'ajv';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { GatewayError } from './errors.js';
 
 const ajv = new Ajv({ strict: true, allErrors: false, validateFormats: false });
+const SCHEMA_DRAFTS = new Set([
+  'http://json-schema.org/draft-07/schema#', 'http://json-schema.org/draft-07/schema',
+  'https://json-schema.org/draft/2020-12/schema', 'https://json-schema.org/draft/2020-12/schema#',
+]);
 const nameSchema = { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,64}$' };
 const callSchema = {
   type: 'object', additionalProperties: false, required: ['id', 'type', 'function'],
@@ -37,6 +42,7 @@ export interface CompletionRequest {
   tools?: Tool[];
   tool_choice?: 'auto' | 'none' | 'required';
   parallel_tool_calls?: boolean;
+  stream_options?: { include_usage?: boolean };
 }
 export interface AssistantMessage { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
 export interface PreparedRequest {
@@ -51,13 +57,28 @@ const validateRequest = ajv.compile({
   properties: {
     model: { const: 'chatgpt-browser' }, stream: { type: 'boolean' },
     parallel_tool_calls: { type: 'boolean' }, tool_choice: { enum: ['auto', 'none', 'required'] },
+    stream_options: {
+      type: 'object', additionalProperties: false, properties: { include_usage: { type: 'boolean' } },
+    },
+    max_tokens: { type: 'integer', minimum: 1 }, max_completion_tokens: { type: 'integer', minimum: 1 },
     messages: {
       type: 'array', minItems: 1, maxItems: 200,
       items: {
         type: 'object', additionalProperties: false, required: ['role', 'content'],
         properties: {
           role: { enum: ['system', 'developer', 'user', 'assistant', 'tool'] },
-          content: { type: ['string', 'null'], maxLength: 200_000 },
+          content: {
+            anyOf: [
+              { type: ['string', 'null'], maxLength: 200_000 },
+              {
+                type: 'array', minItems: 1, maxItems: 64,
+                items: {
+                  type: 'object', additionalProperties: false, required: ['type', 'text'],
+                  properties: { type: { const: 'text' }, text: { type: 'string', maxLength: 200_000 } },
+                },
+              },
+            ],
+          },
           tool_call_id: { type: 'string', minLength: 1, maxLength: 128 },
           tool_calls: { type: 'array', minItems: 1, maxItems: 8, items: callSchema },
         },
@@ -72,7 +93,7 @@ const validateRequest = ajv.compile({
           function: {
             type: 'object', additionalProperties: false, required: ['name', 'parameters'],
             properties: {
-              name: nameSchema, description: { type: 'string', maxLength: 4000 },
+              name: nameSchema, description: { type: 'string', maxLength: 16_000 },
               parameters: { type: 'object' }, strict: { type: 'boolean' },
             },
           },
@@ -116,14 +137,14 @@ function checkSchema(value: unknown, depth = 0): void {
   if (depth > 20) invalid('Tool schema is too deeply nested.');
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
   for (const [key, child] of Object.entries(value)) {
-    if (['$ref', '$async', '$id'].includes(key)) invalid('Tool schemas may not use $ref, $id or $async.');
-    if (['properties', 'patternProperties', 'definitions', '$defs', 'dependencies'].includes(key)) {
+    if (['$ref', '$async', '$id', '$dynamicRef', '$recursiveRef'].includes(key)) invalid('Tool schemas may not use $ref, $id or $async.');
+    if (['properties', 'patternProperties', 'definitions', '$defs', 'dependencies', 'dependentSchemas'].includes(key)) {
       if (child && typeof child === 'object') {
         for (const schema of Object.values(child)) checkSchema(schema, depth + 1);
       }
-    } else if (['items', 'allOf', 'anyOf', 'oneOf'].includes(key)) {
+    } else if (['items', 'prefixItems', 'allOf', 'anyOf', 'oneOf'].includes(key)) {
       for (const schema of Array.isArray(child) ? child : [child]) checkSchema(schema, depth + 1);
-    } else if (['additionalProperties', 'additionalItems', 'contains', 'propertyNames', 'not', 'if', 'then', 'else'].includes(key)) {
+    } else if (['additionalProperties', 'additionalItems', 'unevaluatedProperties', 'unevaluatedItems', 'contains', 'propertyNames', 'not', 'if', 'then', 'else'].includes(key)) {
       checkSchema(child, depth + 1);
     }
   }
@@ -134,15 +155,26 @@ export function prepareRequest(input: unknown): PreparedRequest {
     invalid(`Unsupported request: ${ajv.errorsText(validateRequest.errors)}. Text-only Chat Completions subset; see README.`);
   }
   const request = input as CompletionRequest;
+  for (const message of request.messages) {
+    const content: unknown = message.content;
+    if (Array.isArray(content)) {
+      message.content = content.map((part: { text: string }) => part.text).join('\n\n');
+      if (message.content.length > 200_000) invalid('Message content is too long.');
+    }
+  }
   validateHistory(request.messages);
   const validators = new Map<string, ValidateFunction>();
   const toolAjv = new Ajv({ strict: true, allErrors: false });
+  const toolAjv2020 = new Ajv2020({ strict: true, allErrors: false });
   for (const tool of request.tools ?? []) {
     const { name, parameters } = tool.function;
     if (validators.has(name)) invalid('Tool names must be unique.');
     if (JSON.stringify(parameters).length > 16_000 || parameters.type !== 'object') invalid('Use object tool schemas up to 16KB.');
     checkSchema(parameters);
-    try { validators.set(name, toolAjv.compile(parameters)); } catch { invalid(`Unsupported JSON Schema for ${name}.`); }
+    const draft = parameters.$schema;
+    if (draft !== undefined && !SCHEMA_DRAFTS.has(draft as string)) invalid(`Unsupported JSON Schema draft for ${name}.`);
+    const compiler = typeof draft === 'string' && draft.includes('2020-12') ? toolAjv2020 : toolAjv;
+    try { validators.set(name, compiler.compile(parameters)); } catch { invalid(`Unsupported JSON Schema for ${name}.`); }
   }
   if (request.tool_choice === 'required' && validators.size === 0) invalid('tool_choice required needs tools.');
   const nonce = randomUUID();

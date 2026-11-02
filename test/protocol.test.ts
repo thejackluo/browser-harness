@@ -97,3 +97,37 @@ test('still rejects real references inside nested schema positions', () => {
     assert.throws(() => prepareRequest({ ...base, tools: [{ ...tool, function: { ...tool.function, parameters } }] }), /may not use/);
   }
 });
+
+test('accepts token ceilings, stream options and text content parts', () => {
+  const prepared = prepareRequest({
+    ...base, max_tokens: 32000, stream: true, stream_options: { include_usage: true },
+    messages: [{ role: 'system', content: [{ type: 'text', text: 'Be brief.' }] }, { role: 'user', content: [{ type: 'text', text: 'Read' }, { type: 'text', text: 'the README' }] }],
+  });
+  assert.equal(prepared.request.messages[1]?.content, 'Read\n\nthe README');
+});
+
+test('rejects non-text content parts', () => {
+  assert.throws(() => prepareRequest({ ...base, messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'x' } }] }] }), /Unsupported request/);
+});
+
+test('compiles draft 2020-12 and draft-07 tool schemas and rejects unknown drafts', () => {
+  const schema = (draft: string) => ({ ...tool, function: { ...tool.function, parameters: { ...tool.function.parameters, $schema: draft } } });
+  for (const draft of ['https://json-schema.org/draft/2020-12/schema', 'http://json-schema.org/draft-07/schema#']) {
+    const prepared = prepareRequest({ ...base, tools: [schema(draft)] });
+    assert.throws(() => parseReply(JSON.stringify({ nonce: prepared.nonce, type: 'tool_calls', tool_calls: [{ name: 'read_file', arguments: { path: 1 } }] }), prepared));
+  }
+  assert.throws(() => prepareRequest({ ...base, tools: [schema('https://example.com/schema')] }), /draft/);
+});
+
+test('rejects references nested in draft 2020-12 subschema keywords', () => {
+  const draft = 'https://json-schema.org/draft/2020-12/schema';
+  for (const extra of [
+    { properties: { list: { type: 'array', prefixItems: [{ $ref: '#' }] } } },
+    { dependentSchemas: { path: { $ref: '#' } } },
+    { unevaluatedProperties: { $ref: '#' } },
+    { properties: { list: { type: 'array', unevaluatedItems: { $dynamicRef: '#x' } } } },
+  ]) {
+    const parameters = { $schema: draft, type: 'object', ...extra };
+    assert.throws(() => prepareRequest({ ...base, tools: [{ ...tool, function: { ...tool.function, parameters } }] }), /\$ref/);
+  }
+});

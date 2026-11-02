@@ -28,6 +28,7 @@ avoids subscription limits, or exposes the ordinary chat allowance as an officia
 | ChatGPT browser text | Live-tested once on a Plus account; markup changes can break it |
 | `GET /v1/models`, `POST /v1/chat/completions` | Implemented subset described below |
 | Tool calls | Strict JSON emulation; validated names, arguments, IDs and results |
+| OpenCode | Live-tested with OpenCode 1.19.5 on two small coding tasks (see below) |
 | Streaming | Buffered SSE after final reply validation, not live token streaming |
 | Sessions | Fresh browser chat per request; complete supplied history replayed |
 | Model selection | Manually choose in ChatGPT; the gateway does not verify the actual model |
@@ -125,7 +126,9 @@ For clients supporting a configurable OpenAI Chat Completions endpoint:
 This does **not** claim compatibility with every OpenAI client. Responses API,
 Anthropic protocols, native reasoning fields, token counting, and advanced sampling
 options are not implemented. Unsupported fields return HTTP 400 rather than being
-silently ignored. Disable automatic model/provider fallback in your harness.
+silently ignored; the only accepted-but-ignored fields are the token ceilings and
+`stream_options` listed under the API contract. Disable automatic model/provider
+fallback in your harness.
 
 Example (macOS / Linux; keep the gateway running in another terminal with the same keys):
 
@@ -135,6 +138,27 @@ curl http://127.0.0.1:4318/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"chatgpt-browser","messages":[{"role":"user","content":"Explain recursion briefly."}]}'
 ```
+
+### OpenCode
+
+Copy [`examples/opencode.json`](examples/opencode.json) into a project (or merge it
+into `~/.config/opencode/opencode.json`), export `BROWSER_HARNESS_API_KEY` in the
+shell, and run OpenCode there:
+
+```sh
+export BROWSER_HARNESS_API_KEY=...   # same value the gateway uses
+opencode run "The subtract test fails. Read calc.js, fix the bug, then run npm test."
+```
+
+One live run with OpenCode 1.19.5 used its default `build` agent (read, glob, grep,
+apply_patch, bash and other tools) against a paired ChatGPT Plus tab. It fixed a
+failing test in about 45 seconds and, in a second task, added a function plus tests
+(three parallel reads, a two-file patch, `npm test`) in about 75 seconds. Each
+OpenCode step is a separate browser chat with the full history replayed, so long
+sessions get slower and use more of your ChatGPT allowance. OpenCode also sends one
+extra request per session to generate a title. OpenCode executes the tools and
+enforces its own permission settings; the gateway only validates the requested
+calls. Use a sandboxed or disposable project.
 
 ### A safe first agent task
 
@@ -151,14 +175,19 @@ not a general-purpose autonomous coding agent.
 ## API contract
 
 Supported request fields: `model`, `messages`, `stream`, `tools`, `tool_choice`
-(`auto`, `none`, `required`), and `parallel_tool_calls`. Messages accept roles
-`system`, `developer`, `user`, `assistant`, and `tool`, with string content
-(or null for assistant tool calls). Assistant `tool_calls` retain function names,
+(`auto`, `none`, `required`), and `parallel_tool_calls`. `max_tokens`,
+`max_completion_tokens` and `stream_options` are accepted for harness
+compatibility but ignored: the browser reply length cannot be capped and no usage
+chunk is emitted. Messages accept roles `system`, `developer`, `user`, `assistant`,
+and `tool`, with string content, an array of `{"type":"text"}` parts (joined with
+blank lines), or null for assistant tool calls. Assistant `tool_calls` retain function names,
 JSON argument strings and unique IDs; tool results must reference a pending ID.
 All pending calls must be resolved before continuing. Tool choice defaults to auto.
 
 Tools use OpenAI's `type: "function"` shape. Parameters must be JSON Schema object
-schemas, at most 16KB each; references, async schemas and IDs are rejected. Names
+schemas, at most 16KB each, using draft-07 or draft 2020-12 (`$schema` may name
+either); references, async schemas and IDs are rejected. Descriptions are limited to
+16,000 characters. Names
 must be unique. Requests are limited to 32 tools, 200 messages, 512KB JSON and a
 rendered prompt of 200,000 characters. Unsupported schema keywords fail validation.
 Format annotations (such as `format: "email"`) are unsupported and rejected too.
