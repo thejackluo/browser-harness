@@ -1,0 +1,30 @@
+{
+  "name": "browser-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local ChatGPT browser gateway for agent harnesses",
+  "engines": { "node": ">=20.18" },
+  "scripts": {
+    "build": "tsc && node scripts/build-extension.mjs",
+    "start": "node dist/src/cli.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "smoke": "node dist/scripts/smoke.js"
+  },
+  "dependencies": { "ajv": "8.18.0", "ws": "8.21.0" },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@types/chrome": "0.1.24",
+    "@types/jsdom": "21.1.7",
+    "@types/node": "22.18.12",
+    "@types/ws": "8.18.1",
+    "esbuild": "0.25.12",
+    "eslint": "9.39.1",
+    "globals": "16.5.0",
+    "jsdom": "26.1.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.2"
+  }
+}
