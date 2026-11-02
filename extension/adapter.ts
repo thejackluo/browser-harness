@@ -87,20 +87,25 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
   const deadline = time.now() + 170_000;
   let previous = '';
   let stableSince = time.now();
-  while (time.now() < deadline) {
-    check();
-    const text = assistantText(document);
-    if (text !== previous || !stopped(document)) { previous = text; stableSince = time.now(); }
-    // Only a complete protocol object can finish, never a thinking/status paragraph.
-    let complete = false;
-    try { const parsed = JSON.parse(text); complete = parsed !== null && typeof parsed === 'object'; } catch { /* Still generating or a malformed final reply. */ }
-    if (text && stopped(document) && time.now() - stableSince >= 2000) {
-      if (!complete) throw new BrowserError('ui_changed');
-      return text;
+  try {
+    while (time.now() < deadline) {
+      check();
+      const text = assistantText(document);
+      if (text !== previous || !stopped(document)) { previous = text; stableSince = time.now(); }
+      // Only a complete protocol object can finish, never a thinking/status paragraph.
+      let complete = false;
+      try { const parsed = JSON.parse(text); complete = parsed !== null && typeof parsed === 'object'; } catch { /* Still generating or a malformed final reply. */ }
+      if (text && stopped(document) && time.now() - stableSince >= 2000) {
+        if (!complete) throw new BrowserError('ui_changed');
+        return text;
+      }
+      await time.wait(signal);
     }
-    await time.wait(signal);
+    throw new BrowserError('ui_changed');
+  } catch (error) {
+    stopChat(document);
+    throw error;
   }
-  throw new BrowserError('ui_changed');
 }
 
 export function stopChat(document: Document): void {

@@ -68,8 +68,37 @@ test('does not mistake conversation text for a provider challenge', async () => 
 
 test('refuses to submit while the user already has a generation running', async () => {
   const f = fixture(); const stop = f.document.createElement('button'); stop.dataset.testid = 'stop-button'; f.document.body.append(stop);
+  let stops = 0;
+  stop.addEventListener('click', () => { stops++; });
   await assert.rejects(runChat(f.document, 'hello', new AbortController().signal, f.clock), /browser_busy/);
+  assert.equal(stops, 0);
 });
+
+for (const failure of ['timeout', 'challenge', 'abort'] as const) {
+  test(`stops its own generation after ${failure} before reporting failure`, async () => {
+    const f = fixture();
+    const controller = new AbortController();
+    let stops = 0;
+    f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
+    f.document.querySelector('button')!.addEventListener('click', () => {
+      const stop = f.document.createElement('button');
+      stop.dataset.testid = 'stop-button';
+      stop.addEventListener('click', () => { stops++; stop.remove(); });
+      f.document.body.append(stop);
+    });
+    if (failure === 'challenge') f.setTick(() => {
+      const alert = f.document.createElement('div');
+      alert.setAttribute('role', 'alert');
+      alert.textContent = 'Usage limit reached';
+      f.document.body.append(alert);
+    });
+    if (failure === 'abort') f.setTick(() => controller.abort());
+    const code = { timeout: 'ui_changed', challenge: 'provider_blocked', abort: 'cancelled' }[failure];
+    await assert.rejects(runChat(f.document, 'hello', controller.signal, f.clock), new RegExp(code));
+    assert.equal(stops, 1);
+    assert.equal(f.document.querySelector('[data-testid="stop-button"]'), null);
+  });
+}
 
 test('honors cancellation before changing a tab', async () => {
   const f = fixture(); const controller = new AbortController(); controller.abort();
