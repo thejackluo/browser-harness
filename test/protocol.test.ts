@@ -90,6 +90,9 @@ test('still rejects real references inside nested schema positions', () => {
     { type: 'object', allOf: [{ $ref: '#' }] },
     { type: 'object', additionalProperties: { $ref: '#' } },
     { type: 'object', dependencies: { field: { $ref: '#' } } },
+    { type: 'object', $defs: { unused: { $ref: 'https://example.com/schema' } } },
+    { type: 'object', $defs: { unused: { $id: 'https://example.com/schema' } } },
+    { type: 'object', $defs: { unused: { $async: true } } },
   ]) {
     assert.throws(() => prepareRequest({ ...base, tools: [{ ...tool, function: { ...tool.function, parameters } }] }), /may not use/);
   }

@@ -117,7 +117,7 @@ function checkSchema(value: unknown, depth = 0): void {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
   for (const [key, child] of Object.entries(value)) {
     if (['$ref', '$async', '$id'].includes(key)) invalid('Tool schemas may not use $ref, $id or $async.');
-    if (['properties', 'patternProperties', 'definitions', 'dependencies'].includes(key)) {
+    if (['properties', 'patternProperties', 'definitions', '$defs', 'dependencies'].includes(key)) {
       if (child && typeof child === 'object') {
         for (const schema of Object.values(child)) checkSchema(schema, depth + 1);
       }
