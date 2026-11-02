@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Browser Harness — ChatGPT",
+  "version": "0.1.0",
+  "description": "Pair one ChatGPT tab with your authenticated local agent gateway.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://chatgpt.com/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html" },
+  "content_scripts": [{ "matches": ["https://chatgpt.com/*"], "js": ["content.js"], "run_at": "document_idle" }],
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; connect-src ws://127.0.0.1:*" }
+}
