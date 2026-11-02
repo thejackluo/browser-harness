@@ -207,6 +207,13 @@ pairing failures, host/origin restrictions and ChatGPT-like DOM fixtures. They
 require no account, keys, provider requests, or browser launch. They do not establish
 live website compatibility. CI runs these checks and an audit of runtime dependencies.
 
+The full development-dependency audit currently flags the
+[minimatch amplification advisory](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+through ESLint and TypeScript-ESLint. Runtime dependencies pass `npm audit --omit=dev`.
+Do not pass untrusted glob patterns to the development tools. There is no compatible
+patched legacy minimatch release in their pinned dependency ranges; do not run
+`npm audit fix --force` (its proposed ESLint downgrade is not an appropriate fix).
+
 Manual acceptance before relying on the gateway:
 
 1. Confirm the selected ChatGPT model and record account usage indicators.
