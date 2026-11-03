@@ -85,7 +85,7 @@ Windows shortcut: `scripts/windows/setup-and-start.ps1` clones or updates
 `%USERPROFILE%\browser-harness`, builds it, starts the gateway, and copies the bridge
 token to your clipboard. This helper keeps its own keys in
 `%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete that file
-to rotate them, and passes them to the gateway as environment variables. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key.
+to rotate them, and passes them to the gateway as environment variables; `npm run -s token`, `key` and `opencode` reuse them. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\setup-and-start.ps1

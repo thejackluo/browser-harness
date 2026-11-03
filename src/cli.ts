@@ -11,13 +11,22 @@ const files = { api: join(home, 'api_key'), bridge: join(home, 'bridge_token') }
 const port = Number(process.env.BROWSER_HARNESS_PORT ?? 4318);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Use a port between 1024 and 65535.');
 
+/** Keys written by scripts/windows/setup-and-start.ps1 take precedence so `token`/`key`/`opencode` match the gateway it started. */
+function legacyKeys(): Partial<Record<keyof typeof files, string>> | undefined {
+  try {
+    const keys = JSON.parse(readFileSync(join(home, 'keys.json'), 'utf8'));
+    return { api: typeof keys.api === 'string' ? keys.api : undefined, bridge: typeof keys.bridge === 'string' ? keys.bridge : undefined };
+  } catch { return undefined; }
+}
+
 function stored(kind: keyof typeof files): string {
   const fromEnv = kind === 'api' ? process.env.BROWSER_HARNESS_API_KEY : process.env.BROWSER_HARNESS_BRIDGE_TOKEN;
   if (fromEnv) return fromEnv;
-  if (!existsSync(files[kind])) {
-    mkdirSync(home, { recursive: true, mode: 0o700 });
-    writeFileSync(files[kind], randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' });
-  }
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  chmodSync(home, 0o700);
+  const legacy = legacyKeys()?.[kind];
+  if (legacy) writeFileSync(files[kind], legacy, { mode: 0o600 });
+  else if (!existsSync(files[kind])) writeFileSync(files[kind], randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' });
   chmodSync(files[kind], 0o600);
   return readFileSync(files[kind], 'utf8').trim();
 }
