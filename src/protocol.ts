@@ -35,8 +35,10 @@ export interface Tool {
   type: 'function';
   function: { name: string; description?: string; parameters: Record<string, unknown>; strict?: boolean };
 }
+export const MODELS = { 'chatgpt-browser': 'chatgpt', 'gemini-browser': 'gemini' } as const;
+export type ModelId = keyof typeof MODELS;
 export interface CompletionRequest {
-  model: 'chatgpt-browser';
+  model: ModelId;
   messages: Message[];
   stream?: boolean;
   tools?: Tool[];
@@ -55,7 +57,7 @@ export interface PreparedRequest {
 const validateRequest = ajv.compile({
   type: 'object', additionalProperties: false, required: ['model', 'messages'],
   properties: {
-    model: { const: 'chatgpt-browser' }, stream: { type: 'boolean' },
+    model: { enum: Object.keys(MODELS) }, stream: { type: 'boolean' },
     parallel_tool_calls: { type: 'boolean' }, tool_choice: { enum: ['auto', 'none', 'required'] },
     stream_options: {
       type: 'object', additionalProperties: false, properties: { include_usage: { type: 'boolean' } },

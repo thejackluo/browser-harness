@@ -3,13 +3,13 @@
 <head><meta charset="utf-8"><title>Browser Harness</title><link rel="stylesheet" href="popup.css"></head>
 <body>
   <h1>Browser Harness</h1>
-  <p>Open a dedicated ChatGPT tab and choose your model manually. Arming lets local agents create fresh chats in this tab. Do not use it for other work.</p>
+  <p>Open a dedicated ChatGPT or Gemini tab and choose your model manually. You can arm one tab per provider. Arming lets local agents create fresh chats in this tab. Do not use it for other work.</p>
   <form id="pair">
     <label>Gateway port <input id="port" type="number" min="1024" max="65535" value="4318" required></label>
     <label>Bridge token <input id="token" type="password" minlength="32" autocomplete="off" required></label>
     <button type="submit">Pair &amp; arm this tab</button>
   </form>
-  <button id="disconnect" type="button">Disconnect / stop</button>
+  <button id="disconnect" type="button">Disconnect all / stop</button>
   <p id="status" role="status" aria-live="polite">Disconnected</p>
   <small>Tokens are kept in service-worker memory only. No cookies are read. Images and voice are not yet supported.</small>
   <script type="module" src="popup.js"></script>

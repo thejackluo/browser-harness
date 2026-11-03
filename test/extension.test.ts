@@ -24,7 +24,8 @@ test('content script accepts its worker without requiring a page URL, rejects ot
 
 test('extension manifest limits host access and bundles worker as a module', () => {
   const manifest = JSON.parse(readFileSync('build/extension/manifest.json', 'utf8'));
-  assert.deepEqual(manifest.host_permissions, ['https://chatgpt.com/*']);
+  assert.deepEqual(manifest.host_permissions, ['https://chatgpt.com/*', 'https://gemini.google.com/*']);
+  assert.deepEqual(manifest.content_scripts[0].matches, manifest.host_permissions);
   assert.equal(manifest.background.type, 'module');
   assert.ok(!manifest.permissions.includes('cookies'));
   assert.ok(!manifest.externally_connectable);

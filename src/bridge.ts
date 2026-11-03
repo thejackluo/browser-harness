@@ -17,45 +17,57 @@ interface Job {
 }
 
 const uiStages = new Set(['new_chat', 'editor', 'insert', 'send', 'reply']);
-const providerErrors: Record<string, string> = {
-  login_required: 'Sign into ChatGPT manually, then pair the tab again.',
-  provider_blocked: 'ChatGPT displayed a limit or challenge. Resolve it manually; no retries were made.',
-  ui_changed: 'ChatGPT UI could not be operated safely. Inspect the selected tab.',
-  tab_not_attached: 'The extension is not attached to the selected tab. Reload the ChatGPT tab, then pair again.',
+export const PROVIDERS = { chatgpt: 'ChatGPT', gemini: 'Gemini' } as const;
+export type Provider = keyof typeof PROVIDERS;
+export function isProvider(value: unknown): value is Provider {
+  return typeof value === 'string' && Object.hasOwn(PROVIDERS, value);
+}
+const providerErrors = (label: string): Record<string, string> => ({
+  login_required: `Sign into ${label} manually, then pair the tab again.`,
+  provider_blocked: `${label} displayed a limit or challenge. Resolve it manually; no retries were made.`,
+  ui_changed: `${label} UI could not be operated safely. Inspect the selected tab.`,
+  tab_not_attached: `The extension is not attached to the selected tab. Reload the ${label} tab, then pair again.`,
   browser_busy: 'The selected tab is already running a request.',
   cancelled: 'Browser request was cancelled.',
-};
+});
+
+/** Authenticates a new extension socket, then hands it to the bridge for the provider it names. */
+export function acceptPeer(socket: WebSocket, token: string, bridges: Record<Provider, BrowserBridge>): void {
+  const authTimer = setTimeout(() => socket.close(1008, 'Pairing required'), 5000);
+  socket.on('error', () => socket.terminate());
+  socket.on('close', () => clearTimeout(authTimer));
+  socket.once('message', data => {
+    clearTimeout(authTimer);
+    let message;
+    try { message = JSON.parse(data.toString()); } catch { socket.close(1008, 'Invalid message'); return; }
+    const provider = message?.provider ?? 'chatgpt';
+    if (!message || typeof message !== 'object' || message.type !== 'hello' || message.protocol !== 1 || !isProvider(provider) ||
+      typeof message.token !== 'string' || !secretEquals(message.token, token)) {
+      socket.close(1008, 'Pairing rejected'); return;
+    }
+    bridges[provider].attach(socket);
+  });
+}
 
 export class BrowserBridge {
   private peer?: WebSocket;
   private active?: Job;
   private queue: Job[] = [];
 
-  constructor(private token: string, private timeoutMs = 180_000, private maxQueue = 4) {}
+  constructor(private label = 'ChatGPT', private timeoutMs = 180_000, private maxQueue = 4) {}
 
   get connected(): boolean { return this.peer?.readyState === WebSocket.OPEN; }
   get queuedRequests(): number { return this.queue.length; }
 
-  accept(socket: WebSocket): void {
-    let authenticated = false;
-    const authTimer = setTimeout(() => socket.close(1008, 'Pairing required'), 5000);
-    socket.on('error', () => socket.terminate());
+  attach(socket: WebSocket): void {
+    if (this.peer && this.peer.readyState !== WebSocket.CLOSED) { socket.close(1008, `A ${this.label} tab is already paired`); return; }
+    this.peer = socket;
+    socket.send(JSON.stringify({ type: 'ready', protocol: 1 }));
+    this.dispatch();
     socket.on('message', data => {
       let message;
       try { message = JSON.parse(data.toString()); } catch { socket.close(1008, 'Invalid message'); return; }
       if (!message || typeof message !== 'object') { socket.close(1008, 'Invalid message'); return; }
-      if (!authenticated) {
-        if (message.type !== 'hello' || message.protocol !== 1 || typeof message.token !== 'string' || !secretEquals(message.token, this.token)) {
-          socket.close(1008, 'Pairing rejected'); return;
-        }
-        if (this.peer && this.peer.readyState !== WebSocket.CLOSED) { socket.close(1008, 'A browser is already paired'); return; }
-        authenticated = true;
-        clearTimeout(authTimer);
-        this.peer = socket;
-        socket.send(JSON.stringify({ type: 'ready', protocol: 1 }));
-        this.dispatch();
-        return;
-      }
       if (message.type === 'ping') { socket.send(JSON.stringify({ type: 'pong' })); return; }
       const job = this.active;
       if (this.peer !== socket || !job || message.id !== job.id) return;
@@ -65,21 +77,21 @@ export class BrowserBridge {
         job.resolve(message.text);
         this.dispatch();
       } else if (message.type === 'error') {
-        const code = typeof message.code === 'string' && Object.hasOwn(providerErrors, message.code) ? message.code : 'ui_changed';
+        const errors = providerErrors(this.label);
+        const code = typeof message.code === 'string' && Object.hasOwn(errors, message.code) ? message.code : 'ui_changed';
         const stage = code === 'ui_changed' && uiStages.has(message.stage) ? ` Failed step: ${message.stage}.` : '';
-        this.disconnect(new GatewayError(502, code, `${providerErrors[code] ?? 'Browser error.'}${stage}`));
+        this.disconnect(new GatewayError(502, code, `${errors[code] ?? 'Browser error.'}${stage}`));
       } else {
         this.disconnect(new GatewayError(502, 'invalid_browser_reply', 'Malformed browser response. Pair again.'));
       }
     });
     socket.on('close', () => {
-      clearTimeout(authTimer);
       if (this.peer === socket) this.disconnect(new GatewayError(503, 'browser_disconnected', 'Browser disconnected. Pair again before retrying.'));
     });
   }
 
   run(prompt: string, signal: AbortSignal): Promise<string> {
-    if (!this.connected) return Promise.reject(new GatewayError(503, 'browser_unavailable', 'Pair and arm a ChatGPT tab in the extension.'));
+    if (!this.connected) return Promise.reject(new GatewayError(503, 'browser_unavailable', `Pair and arm a ${this.label} tab in the extension.`));
     if (signal.aborted) return Promise.reject(new GatewayError(499, 'cancelled', 'Request cancelled.'));
     if (this.queue.length >= this.maxQueue) return Promise.reject(new GatewayError(429, 'queue_full', 'Browser queue is full.'));
     return new Promise((resolve, reject) => {

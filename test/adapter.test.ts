@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { runChat, type AdapterClock } from '../extension/adapter.js';
+import { geminiUi, runChat, uiFor, type AdapterClock } from '../extension/adapter.js';
 
 function fixture() {
   const dom = new JSDOM('<a data-testid="create-new-chat-button" href="/">New chat</a><textarea id="prompt-textarea"></textarea><button data-testid="send-button">Send</button>');
@@ -138,4 +138,69 @@ test('operates the current ChatGPT composer and turn markup', async () => {
   assert.equal(document.querySelector('[role="textbox"]')!.textContent, 'hello');
   assert.equal(JSON.parse(text).content, 'done');
   assert.ok(ticks >= 13);
+});
+
+function geminiFixture() {
+  const dom = new JSDOM('<side-navigation><a class="side-nav-sparkle-button" aria-label="New chat" href="/app">Gemini</a></side-navigation><main><user-query>old</user-query><model-response><message-content><div class="markdown">old</div></message-content></model-response></main><rich-textarea><div class="ql-editor ql-blank" contenteditable="true" role="textbox" aria-label="Enter a prompt for Gemini"></div></rich-textarea><button aria-label="Send message"></button>');
+  const { document } = dom.window;
+  dom.window.HTMLElement.prototype.getClientRects = function () { return (this.closest('[hidden]') ? [] : [{}]) as unknown as DOMRectList; };
+  Object.defineProperty(dom.window.HTMLElement.prototype, 'innerText', { get(this: HTMLElement) { return this.textContent; } });
+  document.execCommand = (_command: string, _ui?: boolean, value?: string) => { (document.activeElement as HTMLElement).textContent = value ?? ''; return true; };
+  let now = 0;
+  let tick: ((n: number) => void) | undefined;
+  let ticks = 0;
+  const clock: AdapterClock = { now: () => now, wait: async signal => { signal.throwIfAborted(); now += 250; tick?.(++ticks); } };
+  return { document, clock, setTick: (callback: (n: number) => void) => { tick = callback; } };
+}
+
+test('selects the Gemini UI by hostname', () => {
+  assert.equal(uiFor('gemini.google.com'), geminiUi);
+  assert.notEqual(uiFor('chatgpt.com'), geminiUi);
+});
+
+test('drives Gemini: new chat, composer insert, waits for stop to clear and text to settle', async () => {
+  const f = geminiFixture();
+  const { document } = f;
+  document.querySelector('a')!.addEventListener('click', e => { e.preventDefault(); document.querySelector('main')!.innerHTML = ''; });
+  let response: HTMLElement | undefined;
+  document.querySelector('button[aria-label="Send message"]')!.addEventListener('click', () => {
+    response = document.createElement('model-response');
+    response.innerHTML = '<message-content aria-busy="true"><div class="markdown"><p>{"type":"final",</p></div></message-content>';
+    document.querySelector('main')!.append(response);
+    const stop = document.createElement('button'); stop.setAttribute('aria-label', 'Stop response'); document.body.append(stop);
+  });
+  let doneAt = 0;
+  f.setTick(n => {
+    if (!response) return;
+    if (!doneAt) {
+      response.querySelector('.markdown')!.innerHTML = '<p>{"type":"final","content":"gemini"}</p><button>Copy</button>';
+      doneAt = n;
+    } else if (n === doneAt + 4) {
+      response.querySelector('[aria-busy]')!.removeAttribute('aria-busy');
+      document.querySelector('button[aria-label="Stop response"]')!.remove();
+    }
+  });
+  const text = await runChat(document, 'hello gemini', new AbortController().signal, f.clock, geminiUi);
+  assert.equal(document.querySelector('[role="textbox"]')!.textContent, 'hello gemini');
+  assert.equal(JSON.parse(text).content, 'gemini');
+});
+
+test('reports Gemini sign-in pages as login_required', async () => {
+  const f = geminiFixture();
+  const link = f.document.createElement('a'); link.href = 'https://accounts.google.com/ServiceLogin?continue=x'; link.textContent = 'Sign in';
+  f.document.body.append(link);
+  await assert.rejects(runChat(f.document, 'hello', new AbortController().signal, f.clock, geminiUi), /login_required/);
+});
+
+test('reads a Gemini reply rendered as a code block without its header chrome', async () => {
+  const f = geminiFixture();
+  const { document } = f;
+  document.querySelector('a')!.addEventListener('click', e => { e.preventDefault(); document.querySelector('main')!.innerHTML = ''; });
+  document.querySelector('button[aria-label="Send message"]')!.addEventListener('click', () => {
+    const response = document.createElement('model-response');
+    response.innerHTML = '<message-content><div class="markdown"><response-element><code-block><div class="code-block-decoration"><span>JSON</span><button aria-label="Copy code"></button></div><pre><code>{"type":"final","content":"block"}</code></pre></code-block></response-element></div></message-content>';
+    document.querySelector('main')!.append(response);
+  });
+  const text = await runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi);
+  assert.equal(JSON.parse(text).content, 'block');
 });
