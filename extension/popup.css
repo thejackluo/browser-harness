@@ -7,4 +7,4 @@ input, button { box-sizing: border-box; width: 100%; padding: 10px; border: 1px 
 input { display: block; margin-top: 5px; background: #202a39; color: inherit; }
 button { cursor: pointer; margin-bottom: 10px; background: #abc7fa; color: #101c30; }
 #disconnect { background: transparent; color: #e8edf5; }
-#status { border-left: 3px solid #abc7fa; padding-left: 10px; }
+#status { border-left: 3px solid #abc7fa; padding-left: 10px; white-space: pre-line; }

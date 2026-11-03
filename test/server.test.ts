@@ -15,11 +15,11 @@ async function setup(t: TestContext, options: { timeoutMs?: number; maxQueue?: n
   t.after(() => gateway.close());
   const url = `http://127.0.0.1:${port}`;
   const post = (body: unknown = request, signal?: AbortSignal) => fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
-  const pair = async (token = bridgeToken) => {
+  const pair = async (token = bridgeToken, provider?: string) => {
     const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { origin });
     await once(socket, 'open');
     const ready = once(socket, token === bridgeToken ? 'message' : 'close');
-    socket.send(JSON.stringify({ type: 'hello', protocol: 1, token }));
+    socket.send(JSON.stringify({ type: 'hello', protocol: 1, token, ...(provider ? { provider } : {}) }));
     await ready;
     return socket;
   };
@@ -42,7 +42,8 @@ test('protects API, origins and host headers; reports actual capabilities', asyn
   assert.equal((await fetch(`${url}/v1/models`, { headers: { ...headers, Origin: 'https://evil.example' } })).status, 403);
   assert.equal((await fetch(`${url}/v1/models`, { headers: { ...headers, Origin: '' } })).status, 403);
   const body = await (await fetch(`${url}/v1/status`, { headers })).json();
-  assert.equal(body.browser_connected, false);
+  assert.equal(body.providers.chatgpt.browser_connected, false);
+  assert.equal(body.providers.gemini.browser_connected, false);
   assert.equal(body.capabilities.images, false);
   await new Promise<void>((resolve, reject) => {
     http.get({ host: '127.0.0.1', port, path: '/health', headers: { Host: 'evil.example' } }, response => {
@@ -198,3 +199,39 @@ for (const [code, stage, expected] of [['ui_changed', 'new_chat', /Failed step: 
     assert.ok(!body.includes('<script>'));
   });
 }
+
+test('lists both models and routes each to its own paired provider tab', async t => {
+  const { url, post, pair, gateway, port } = await setup(t);
+  const models = await (await fetch(`${url}/v1/models`, { headers: { Authorization: `Bearer ${apiKey}` } })).json();
+  assert.deepEqual(models.data.map((m: { id: string }) => m.id), ['chatgpt-browser', 'gemini-browser']);
+  const gemini = await pair(bridgeToken, 'gemini');
+  gemini.on('message', data => { const job = JSON.parse(data.toString()); if (job.type === 'run') answer(gemini, job, 'from gemini'); });
+  assert.equal(gateway.bridges.gemini.connected, true);
+  assert.equal(gateway.bridges.chatgpt.connected, false);
+  const unpaired = await post();
+  assert.equal(unpaired.status, 503);
+  assert.match((await unpaired.json()).error.message, /ChatGPT tab/);
+  const response = await post({ ...request, model: 'gemini-browser' });
+  const body = await response.json();
+  assert.equal(body.model, 'gemini-browser');
+  assert.equal(body.choices[0].message.content, 'from gemini');
+  const chatgpt = await pair();
+  chatgpt.on('message', data => { const job = JSON.parse(data.toString()); if (job.type === 'run') answer(chatgpt, job, 'from chatgpt'); });
+  assert.equal((await (await post()).json()).choices[0].message.content, 'from chatgpt');
+  const second = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { origin });
+  await once(second, 'open');
+  const rejected = once(second, 'close');
+  second.send(JSON.stringify({ type: 'hello', protocol: 1, token: bridgeToken, provider: 'gemini' }));
+  await rejected;
+  assert.equal(gateway.bridges.gemini.connected, true);
+});
+
+test('rejects unknown models and providers', async t => {
+  const { post, port } = await setup(t);
+  assert.equal((await post({ ...request, model: 'claude-browser' })).status, 400);
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { origin });
+  await once(socket, 'open');
+  const closed = once(socket, 'close');
+  socket.send(JSON.stringify({ type: 'hello', protocol: 1, token: bridgeToken, provider: 'claude' }));
+  await closed;
+});

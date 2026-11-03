@@ -1,8 +1,8 @@
 # Browser Harness
 
-An experimental, local-first **ChatGPT browser → OpenAI-compatible agent gateway**.
-Use a dedicated, manually logged-in ChatGPT tab as the reasoning component of an
-existing agent harness. The harness executes tools; this gateway never runs shell
+An experimental, local-first **ChatGPT / Gemini browser → OpenAI-compatible agent gateway**.
+Use a dedicated, manually logged-in ChatGPT or Gemini tab as the reasoning component of an
+existing agent harness, and pick the provider per request with the `model` field. The harness executes tools; this gateway never runs shell
 commands or accesses your files on the model's behalf.
 
 ```text
@@ -10,7 +10,9 @@ Your agent harness
   → authenticated HTTP API at 127.0.0.1:4318/v1
   → separately authenticated WebSocket
   → Chrome extension
-  → dedicated ChatGPT tab (visible UI only)
+  → one dedicated tab per provider (visible UI only)
+       model "chatgpt-browser" → chatgpt.com tab
+       model "gemini-browser"  → gemini.google.com tab
 ```
 
 This is an initial implementation, **not a verified substitute for the official
@@ -18,7 +20,9 @@ model API**. Automated tests use simulated browser peers and DOM fixtures, not
 paid accounts. One live run on a ChatGPT Plus web account (October 2026 UI) passed a
 text completion, the `read_project_readme` two-turn tool loop, client cancellation
 (generation stopped, tab disarmed) and re-pairing. ChatGPT changes its markup often;
-model identity, availability, and quota accounting remain unverified. Nothing here guarantees unlimited usage,
+model identity, availability, and quota accounting remain unverified. Gemini (Pro
+web account, same month) passed a text completion, the same tool loop and an
+OpenCode coding task. Nothing here guarantees unlimited usage,
 avoids subscription limits, or exposes the ordinary chat allowance as an official API.
 
 ## Current scope
@@ -26,14 +30,16 @@ avoids subscription limits, or exposes the ordinary chat allowance as an officia
 | Feature | Status |
 | --- | --- |
 | ChatGPT browser text | Live-tested once on a Plus account; markup changes can break it |
+| Gemini browser text | Live-tested once on a Pro account; markup changes can break it |
 | `GET /v1/models`, `POST /v1/chat/completions` | Implemented subset described below |
 | Tool calls | Strict JSON emulation; validated names, arguments, IDs and results |
 | OpenCode | Live-tested with OpenCode 1.19.5 on two small coding tasks (see below) |
 | Streaming | Buffered SSE after final reply validation, not live token streaming |
 | Sessions | Fresh browser chat per request; complete supplied history replayed |
-| Model selection | Manually choose in ChatGPT; the gateway does not verify the actual model |
+| Provider selection | `chatgpt-browser` or `gemini-browser`; each routes to its own paired tab |
+| Model selection | Manually choose in the website; the gateway does not verify the actual model |
 | Images, uploads, native image generation, voice | Not implemented; unsupported request shapes rejected |
-| Claude, Gemini, DeepSeek, Grok | Not implemented |
+| Claude, DeepSeek, Grok | Not implemented |
 | Paid API/Codex fallback | None |
 
 The code is original; no source from the projects discussed during research has
@@ -42,7 +48,7 @@ been copied into this repository.
 ## Prerequisites
 
 - Node.js 20.18+ (Node 22 recommended), npm, Chrome 116+.
-- An account permitted to use the ChatGPT website in the manner you intend.
+- An account permitted to use the ChatGPT and/or Gemini website in the manner you intend.
 - A dedicated Chrome tab that you will not use for other work while armed.
 
 Review applicable provider terms before connecting an account. This project does
@@ -57,49 +63,50 @@ npm ci
 npm run build
 ```
 
-Generate **two distinct keys** in your terminal. These are local gateway secrets,
-not OpenAI credentials. Do not commit them or put them in screenshots.
-
-macOS / Linux:
+Start the gateway:
 
 ```sh
-export BROWSER_HARNESS_API_KEY="$(openssl rand -hex 32)"
-export BROWSER_HARNESS_BRIDGE_TOKEN="$(openssl rand -hex 32)"
 npm start
 ```
 
-Windows PowerShell:
+On first start it creates two distinct random secrets, readable only by your user:
+`~/.browser-harness/api_key` (for agent harnesses) and `~/.browser-harness/bridge_token`
+(for pairing the extension). Delete them to rotate. They are never logged. To use your own
+secrets instead, set `BROWSER_HARNESS_API_KEY` and `BROWSER_HARNESS_BRIDGE_TOKEN`
+(at least 32 characters each); those take precedence over the files.
 
-```powershell
-$env:BROWSER_HARNESS_API_KEY = node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
-$env:BROWSER_HARNESS_BRIDGE_TOKEN = node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
-npm start
+```sh
+npm run -s token      # bridge token: paste into the extension popup
+npm run -s key        # API key: for harnesses that cannot read a file
+npm run -s opencode   # ready-to-use OpenCode config for this gateway
 ```
 
 Windows shortcut: `scripts/windows/setup-and-start.ps1` clones or updates
 `%USERPROFILE%\browser-harness`, builds it, starts the gateway, and copies the bridge
-token to your clipboard. Unlike the gateway itself, this helper stores both keys in
+token to your clipboard. This helper keeps its own keys in
 `%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete that file
-to rotate them. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key.
+to rotate them, and passes them to the gateway as environment variables. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\setup-and-start.ps1
 ```
 
 The server binds to `127.0.0.1` only. `BROWSER_HARNESS_PORT` optionally changes
-port 4318. Keys must each contain at least 32 characters. No keys are generated,
-printed, or stored on disk by the gateway itself. Keep the terminal environment
-available: separate shells need the same environment variables, not new keys.
+port 4318.
 
 1. Open `chrome://extensions`, enable **Developer mode**, select **Load unpacked**,
    and choose `build/extension` in this repository.
-2. Open a dedicated `https://chatgpt.com/` tab and sign in manually. Select the
-   desired model in the website. No provider passwords or cookies enter the gateway.
-3. Open the extension popup **on that tab**. Enter the gateway port and the value
-   of `BROWSER_HARNESS_BRIDGE_TOKEN` from your terminal, then **Pair & arm this tab**.
-   The API key is a different secret and must not be pasted into the extension.
-4. The popup should report **Armed**. Keep that tab open and avoid interacting with
-   it while requests run. Each request clicks New chat; prior chats are not deleted.
+2. Open a dedicated `https://chatgpt.com/` and/or `https://gemini.google.com/app` tab
+   and sign in manually. Select the desired model in the website. No provider
+   passwords or cookies enter the gateway.
+3. Open the extension popup **on that tab**. Enter the gateway port and the bridge
+   token (`npm run -s token`), then **Pair & arm this tab**. Repeat on the other
+   provider's tab if you want both. The API key is a different secret and must not
+   be pasted into the extension.
+4. The popup should report **Armed** for each paired provider. Keep the tabs open and
+   avoid interacting with them while requests run. Each request clicks New chat;
+   prior chats are not deleted. Requests are serialized per provider, so ChatGPT and
+   Gemini requests can run at the same time.
 
 Optional hardening: copy the installed extension ID from `chrome://extensions`
 and set `BROWSER_HARNESS_EXTENSION_ID` before starting the gateway. This restricts
@@ -109,7 +116,7 @@ If a request fails with `tab_not_attached`, the tab was opened before the
 extension loaded. A `ui_changed` error names the step that failed (`new_chat`,
 `editor`, `insert`, `send`, or `reply`), so you can tell which selector needs updating.
 
-After extension installation or reload, refresh the ChatGPT tab to load the content
+After extension installation or reload, refresh the provider tabs to load the content
 script. Restart the gateway after source changes and rebuild/reload the extension
 after extension changes.
 
@@ -120,8 +127,8 @@ For clients supporting a configurable OpenAI Chat Completions endpoint:
 | Setting | Value |
 | --- | --- |
 | Base URL | `http://127.0.0.1:4318/v1` |
-| API key | Value of `BROWSER_HARNESS_API_KEY` |
-| Model | `chatgpt-browser` |
+| API key | `npm run -s key` (or `BROWSER_HARNESS_API_KEY`) |
+| Model | `chatgpt-browser` or `gemini-browser` |
 
 This does **not** claim compatibility with every OpenAI client. Responses API,
 Anthropic protocols, native reasoning fields, token counting, and advanced sampling
@@ -130,25 +137,32 @@ silently ignored; the only accepted-but-ignored fields are the token ceilings an
 `stream_options` listed under the API contract. Disable automatic model/provider
 fallback in your harness.
 
-Example (macOS / Linux; keep the gateway running in another terminal with the same keys):
+Example (macOS / Linux; keep the gateway running in another terminal):
 
 ```sh
 curl http://127.0.0.1:4318/v1/chat/completions \
-  -H "Authorization: Bearer $BROWSER_HARNESS_API_KEY" \
+  -H "Authorization: Bearer $(cat ~/.browser-harness/api_key)" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"chatgpt-browser","messages":[{"role":"user","content":"Explain recursion briefly."}]}'
+  -d '{"model":"gemini-browser","messages":[{"role":"user","content":"Explain recursion briefly."}]}'
 ```
 
 ### OpenCode
 
-Copy [`examples/opencode.json`](examples/opencode.json) into a project (or merge it
-into `~/.config/opencode/opencode.json`), export `BROWSER_HARNESS_API_KEY` in the
-shell, and run OpenCode there:
+Generate a config and run OpenCode in a project:
 
 ```sh
-export BROWSER_HARNESS_API_KEY=...   # same value the gateway uses
-opencode run "The subtract test fails. Read calc.js, fix the bug, then run npm test."
+npm run -s opencode > /path/to/project/opencode.json
+cd /path/to/project
+opencode run -m browser-harness/gemini-browser "The subtract test fails. Read calc.js, fix the bug, then run npm test."
 ```
+
+Or copy [`examples/opencode.json`](examples/opencode.json) (or merge it into
+`~/.config/opencode/opencode.json`). It reads the API key from
+`~/.browser-harness/api_key`; on Windows replace that with the full path
+(`{file:C:/Users/<you>/.browser-harness/api_key}`) or `{env:BROWSER_HARNESS_API_KEY}`.
+Pick the provider with `-m browser-harness/chatgpt-browser`,
+`-m browser-harness/gemini-browser`, `/models` inside OpenCode, or the config's
+`model` field.
 
 One live run with OpenCode 1.19.5 used its default `build` agent (read, glob, grep,
 apply_patch, bash and other tools) against a paired ChatGPT Plus tab. It fixed a
@@ -163,10 +177,11 @@ calls. Use a sandboxed or disposable project.
 ### A safe first agent task
 
 ```sh
-npm run smoke
+npm run smoke                       # ChatGPT
+npm run smoke -- gemini-browser     # Gemini
 ```
 
-The included minimal harness asks ChatGPT to call `read_project_readme`, executes
+The included minimal harness asks the model to call `read_project_readme`, executes
 only that fixed, read-only operation locally, sends its result back, then requests
 a summary. It does not execute model-supplied file paths or shell commands. This
 proves the intended two-turn tool loop when run against your paired browser; it is
