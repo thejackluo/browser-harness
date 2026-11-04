@@ -63,7 +63,7 @@ if (command === 'token') {
     '  provider: custom',
     '  default: chatgpt-browser',
     `  base_url: http://127.0.0.1:${port}/v1`,
-    `  api_key: ${stored('api')}`,
+    `  api_key: ${JSON.stringify(stored('api'))}`,
     '',
   ].join('\n'));
 } else if (command === 'start') {

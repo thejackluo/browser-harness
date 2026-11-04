@@ -134,8 +134,8 @@ For clients supporting a configurable OpenAI Chat Completions endpoint:
 This does **not** claim compatibility with every OpenAI client. Responses API,
 Anthropic protocols, native reasoning fields, token counting, and advanced sampling
 options are not implemented. Unsupported fields return HTTP 400 rather than being
-silently ignored; the only accepted-but-ignored fields are the token ceilings and
-`stream_options` listed under the API contract. Disable automatic model/provider
+silently ignored; the only accepted-but-ignored fields are the token ceilings,
+`reasoning_effort` and `stream_options` listed under the API contract. Disable automatic model/provider
 fallback in your harness.
 
 Example (macOS / Linux; keep the gateway running in another terminal):
@@ -173,6 +173,21 @@ the output of `npm run -s key`, and `chatgpt-browser` (or `gemini-browser`). Or 
 the output of `npm run -s hermes` into the `model:` section of Hermes' `config.yaml`
 (`~/.hermes/config.yaml`; `%LOCALAPPDATA%\hermes\config.yaml` on native Windows).
 Switch providers inside a chat with `/model custom:gemini-browser`.
+The gateway accepts Hermes' `reasoning_effort` field but does not change the model
+or reasoning mode selected in your provider tab. Hermes executes tools on your
+computer: start in a disposable project with normal approval prompts, not `--yolo`.
+
+On native Windows, install Hermes using its
+[official installer](https://hermes-agent.nousresearch.com/docs/getting-started/installation):
+
+```powershell
+iex (irm https://hermes-agent.nousresearch.com/install.ps1)
+```
+
+Keep the gateway PowerShell window open. In a second window, run `hermes model`
+and use the settings above, then launch `hermes chat -m chatgpt-browser` or
+`hermes chat -m gemini-browser` in your project directory. Browser Harness does not
+install Hermes or OpenCode itself.
 
 One live run with OpenCode 1.19.5 used its default `build` agent (read, glob, grep,
 apply_patch, bash and other tools) against a paired ChatGPT Plus tab. It fixed a
@@ -201,7 +216,7 @@ not a general-purpose autonomous coding agent.
 
 Supported request fields: `model`, `messages`, `stream`, `tools`, `tool_choice`
 (`auto`, `none`, `required`), and `parallel_tool_calls`. `max_tokens`,
-`max_completion_tokens` and `stream_options` are accepted for harness
+`max_completion_tokens`, `reasoning_effort` (a string of up to 32 characters) and `stream_options` are accepted for harness
 compatibility but ignored: the browser reply length cannot be capped and no usage
 chunk is emitted. Messages accept roles `system`, `developer`, `user`, `assistant`,
 and `tool`, with string content, an array of `{"type":"text"}` parts (joined with

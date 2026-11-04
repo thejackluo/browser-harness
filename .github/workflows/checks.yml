@@ -4,7 +4,10 @@ permissions:
   contents: read
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,4 +18,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - name: Windows setup and smoke script regression checks
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\scripts\windows\test.ps1
       - run: npm audit --omit=dev --audit-level=moderate

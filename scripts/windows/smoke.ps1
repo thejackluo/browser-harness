@@ -1,5 +1,5 @@
 # Browser Harness: run the read-only two-turn tool smoke test. Pass -Model gemini-browser to test the Gemini tab.
-param([string]$Model = 'chatgpt-browser')
+param([ValidateSet('chatgpt-browser', 'gemini-browser')][string]$Model = 'chatgpt-browser')
 $ErrorActionPreference = 'Stop'
 $repo = Join-Path $env:USERPROFILE 'browser-harness'
 $keys = Get-Content (Join-Path $env:USERPROFILE '.browser-harness\keys.json') -Raw | ConvertFrom-Json
