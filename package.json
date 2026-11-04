@@ -16,7 +16,8 @@
     "smoke": "node dist/scripts/smoke.js",
     "token": "node dist/src/cli.js token",
     "key": "node dist/src/cli.js key",
-    "opencode": "node dist/src/cli.js opencode"
+    "opencode": "node dist/src/cli.js opencode",
+    "hermes": "node dist/src/cli.js hermes"
   },
   "dependencies": {
     "ajv": "8.18.0",

@@ -63,6 +63,7 @@ const validateRequest = ajv.compile({
       type: 'object', additionalProperties: false, properties: { include_usage: { type: 'boolean' } },
     },
     max_tokens: { type: 'integer', minimum: 1 }, max_completion_tokens: { type: 'integer', minimum: 1 },
+    reasoning_effort: { type: 'string', maxLength: 32 },
     messages: {
       type: 'array', minItems: 1, maxItems: 200,
       items: {

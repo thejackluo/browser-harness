@@ -100,7 +100,7 @@ test('still rejects real references inside nested schema positions', () => {
 
 test('accepts token ceilings, stream options and text content parts', () => {
   const prepared = prepareRequest({
-    ...base, max_tokens: 32000, stream: true, stream_options: { include_usage: true },
+    ...base, max_tokens: 32000, reasoning_effort: 'medium', stream: true, stream_options: { include_usage: true },
     messages: [{ role: 'system', content: [{ type: 'text', text: 'Be brief.' }] }, { role: 'user', content: [{ type: 'text', text: 'Read' }, { type: 'text', text: 'the README' }] }],
   });
   assert.equal(prepared.request.messages[1]?.content, 'Read\n\nthe README');

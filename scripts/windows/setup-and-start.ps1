@@ -26,6 +26,17 @@ if (-not (Test-Path $keyFile)) {
   @{ api = (& $gen); bridge = (& $gen) } | ConvertTo-Json | Set-Content -Encoding ascii $keyFile
   icacls $keyFile /inheritance:r /grant:r "$($env:USERNAME):F" | Out-Null
 }
+$opencodeDir = Join-Path $env:USERPROFILE '.config\opencode'
+$opencodeFile = Join-Path $opencodeDir 'opencode.json'
+if (-not (Test-Path $opencodeFile)) {
+  New-Item -ItemType Directory -Force $opencodeDir | Out-Null
+  node dist/src/cli.js opencode | Set-Content -Encoding utf8 $opencodeFile
+  if ($LASTEXITCODE) { throw 'writing the OpenCode config failed' }
+  Write-Host "Wrote OpenCode config: $opencodeFile" -ForegroundColor Cyan
+}
+else {
+  Write-Host "OpenCode config already exists; merge in the output of 'npm run -s opencode' from $repo" -ForegroundColor Yellow
+}
 $keys = Get-Content $keyFile -Raw | ConvertFrom-Json
 $env:BROWSER_HARNESS_API_KEY = $keys.api
 $env:BROWSER_HARNESS_BRIDGE_TOKEN = $keys.bridge

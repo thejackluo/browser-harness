@@ -56,6 +56,16 @@ if (command === 'token') {
 } else if (command === 'opencode') {
   stored('api');
   process.stdout.write(`${JSON.stringify(opencodeConfig(), null, 2)}\n`);
+} else if (command === 'hermes') {
+  process.stdout.write([
+    '# Merge into the model: section of your Hermes config.yaml; switch with `/model custom:gemini-browser`.',
+    'model:',
+    '  provider: custom',
+    '  default: chatgpt-browser',
+    `  base_url: http://127.0.0.1:${port}/v1`,
+    `  api_key: ${stored('api')}`,
+    '',
+  ].join('\n'));
 } else if (command === 'start') {
   const gateway = createGateway({ apiKey: stored('api'), bridgeToken: stored('bridge'), extensionId: process.env.BROWSER_HARNESS_EXTENSION_ID, port });
   await gateway.listen();
@@ -64,10 +74,10 @@ if (command === 'token') {
     `Models: ${Object.keys(MODELS).join(', ')}`,
     process.env.BROWSER_HARNESS_API_KEY ? 'API key: from BROWSER_HARNESS_API_KEY' : `API key file: ${files.api}  (npm run -s key)`,
     'Pair a tab: open the extension popup there and paste the output of `npm run -s token`.',
-    'OpenCode config: `npm run -s opencode`',
+    'OpenCode config: `npm run -s opencode`; Hermes config: `npm run -s hermes`',
   ].join('\n'));
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void gateway.close(); });
 } else {
-  console.error('Usage: browser-harness [start | token | key | opencode]');
+  console.error('Usage: browser-harness [start | token | key | opencode | hermes]');
   process.exit(2);
 }

@@ -79,13 +79,14 @@ secrets instead, set `BROWSER_HARNESS_API_KEY` and `BROWSER_HARNESS_BRIDGE_TOKEN
 npm run -s token      # bridge token: paste into the extension popup
 npm run -s key        # API key: for harnesses that cannot read a file
 npm run -s opencode   # ready-to-use OpenCode config for this gateway
+npm run -s hermes     # Hermes Agent config.yaml snippet (contains the API key)
 ```
 
 Windows shortcut: `scripts/windows/setup-and-start.ps1` clones or updates
 `%USERPROFILE%\browser-harness`, builds it, starts the gateway, and copies the bridge
 token to your clipboard. This helper keeps its own keys in
 `%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete that file
-to rotate them, and passes them to the gateway as environment variables; `npm run -s token`, `key` and `opencode` reuse them. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key.
+to rotate them, and passes them to the gateway as environment variables; `npm run -s token`, `key`, `opencode` and `hermes` reuse them. It also writes `%USERPROFILE%\.config\opencode\opencode.json` if that file does not exist yet. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key; add `-Model gemini-browser` to test the Gemini tab.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\setup-and-start.ps1
@@ -163,6 +164,15 @@ Or copy [`examples/opencode.json`](examples/opencode.json) (or merge it into
 Pick the provider with `-m browser-harness/chatgpt-browser`,
 `-m browser-harness/gemini-browser`, `/models` inside OpenCode, or the config's
 `model` field.
+
+### Hermes Agent
+
+Hermes Agent talks to any OpenAI-compatible endpoint through its `custom` provider.
+Run `hermes model`, choose **Custom endpoint**, and enter `http://127.0.0.1:4318/v1`,
+the output of `npm run -s key`, and `chatgpt-browser` (or `gemini-browser`). Or merge
+the output of `npm run -s hermes` into the `model:` section of Hermes' `config.yaml`
+(`~/.hermes/config.yaml`; `%LOCALAPPDATA%\hermes\config.yaml` on native Windows).
+Switch providers inside a chat with `/model custom:gemini-browser`.
 
 One live run with OpenCode 1.19.5 used its default `build` agent (read, glob, grep,
 apply_patch, bash and other tools) against a paired ChatGPT Plus tab. It fixed a
