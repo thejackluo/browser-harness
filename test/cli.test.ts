@@ -99,6 +99,12 @@ test('setup hermes writes the custom endpoint through the Hermes CLI', { skip: p
   ]);
 }));
 
+test('setup hermes refuses keys that cmd could interpret', () => fixture(({ run }) => {
+  const result = run(['setup', 'hermes'], { BROWSER_HARNESS_API_KEY: `${'k'.repeat(40)}&calc` });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unsafe/);
+}));
+
 test('doctor explains how to start a missing gateway and fails', () => fixture(({ run }) => {
   const result = run(['doctor'], { BROWSER_HARNESS_PORT: '45999', PATH: dirname(process.execPath) });
   assert.equal(result.status, 1);
