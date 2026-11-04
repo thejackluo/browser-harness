@@ -86,7 +86,7 @@ function editorText(editor: HTMLElement): string {
   // innerText includes layout-only line breaks, including inside long JSON strings and URLs.
   const copy = editor.cloneNode(true) as HTMLElement;
   copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-  copy.querySelectorAll('p, div, li').forEach(block => block.append('\n'));
+  copy.querySelectorAll('p, div, li').forEach(block => { block.prepend('\n'); block.append('\n'); });
   return copy.textContent ?? '';
 }
 function blocked(document: Document, ui: ProviderUi): void {

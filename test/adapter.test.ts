@@ -76,33 +76,36 @@ test('does not send when the composer restores a different draft after insertion
   assert.equal(sent, false);
 });
 
-test('verifies rich-text paragraphs without treating a layout-wrapped URL as changed input', async () => {
-  const f = fixture();
-  const editor = f.document.createElement('div');
-  editor.id = 'prompt-textarea';
-  editor.contentEditable = 'true';
-  editor.tabIndex = 0;
-  f.document.querySelector('textarea')!.replaceWith(editor);
-  Object.defineProperty(editor, 'innerText', {
-    get: () => [...editor.children].map(p => p.textContent).join('\n').replace('https://', '\nhttps://'),
+for (const unwrapped of [false, true]) {
+  test(`verifies rich-text ${unwrapped ? 'unwrapped first lines' : 'paragraphs'} without treating a layout-wrapped URL as changed input`, async () => {
+    const f = fixture();
+    const editor = f.document.createElement('div');
+    editor.id = 'prompt-textarea';
+    editor.contentEditable = 'true';
+    editor.tabIndex = 0;
+    f.document.querySelector('textarea')!.replaceWith(editor);
+    Object.defineProperty(editor, 'innerText', {
+      get: () => [...editor.children].map(p => p.textContent).join('\n').replace('https://', '\nhttps://'),
+    });
+    f.document.execCommand = (_command: string, _ui?: boolean, value?: string) => {
+      editor.replaceChildren(...(value ?? '').split('\n').map((line, index) => {
+        if (unwrapped && index === 0) return f.document.createTextNode(line);
+        const p = f.document.createElement(unwrapped ? 'div' : 'p');
+        if (line) p.textContent = line;
+        else p.append(f.document.createElement('br'));
+        return p;
+      }));
+      return true;
+    };
+    f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
+    f.document.querySelector('button')!.addEventListener('click', () => {
+      f.assistant('{"type":"final","content":"done"}');
+    });
+    const prompt = 'Read these tools.\n' + JSON.stringify({ documentation: 'https://example.com/tools', description: 'Use them exactly.' });
+    const text = await runChat(f.document, prompt, new AbortController().signal, f.clock);
+    assert.equal(JSON.parse(text).content, 'done');
   });
-  f.document.execCommand = (_command: string, _ui?: boolean, value?: string) => {
-    editor.replaceChildren(...(value ?? '').split('\n').map(line => {
-      const p = f.document.createElement('p');
-      if (line) p.textContent = line;
-      else p.append(f.document.createElement('br'));
-      return p;
-    }));
-    return true;
-  };
-  f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
-  f.document.querySelector('button')!.addEventListener('click', () => {
-    f.assistant('{"type":"final","content":"done"}');
-  });
-  const prompt = 'Read these tools.\n\n' + JSON.stringify({ documentation: 'https://example.com/tools', description: 'Use them exactly.' });
-  const text = await runChat(f.document, prompt, new AbortController().signal, f.clock);
-  assert.equal(JSON.parse(text).content, 'done');
-});
+}
 
 test('rejects a stale submitted ChatGPT prompt before accepting its response', async () => {
   const f = fixture();
