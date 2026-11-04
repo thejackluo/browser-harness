@@ -184,6 +184,25 @@ test('provider errors expose no raw page data and disarm the bridge', async t =>
   assert.equal(gateway.bridge.connected, false);
 });
 
+test('provider error notices fail one request but keep the tab paired', async t => {
+  const { post, pair, gateway } = await setup(t);
+  const socket = await pair();
+  let runs = 0;
+  socket.on('message', data => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'run') return;
+    if (++runs === 1) socket.send(JSON.stringify({ type: 'error', id: message.id, code: 'provider_error' }));
+    else answer(socket, message, 'recovered');
+  });
+  const failed = await post();
+  assert.equal(failed.status, 502);
+  assert.match(await failed.text(), /retry the request/);
+  assert.equal(gateway.bridge.connected, true);
+  const recovered = await post();
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).choices[0].message.content, 'recovered');
+});
+
 for (const [code, stage, expected] of [['ui_changed', 'new_chat', /Failed step: new_chat\./], ['ui_changed', '<script>', /Inspect the selected tab\."/], ['tab_not_attached', undefined, /Reload the ChatGPT tab/]] as const) {
   test(`reports ${code} ${stage ?? ''} with an allowlisted hint`, async t => {
     const { post, pair } = await setup(t);

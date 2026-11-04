@@ -204,3 +204,27 @@ test('reads a Gemini reply rendered as a code block without its header chrome', 
   const text = await runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi);
   assert.equal(JSON.parse(text).content, 'block');
 });
+
+test('reports a finished Gemini error notice as a retryable provider_error', async () => {
+  const f = geminiFixture();
+  const { document } = f;
+  document.querySelector('a')!.addEventListener('click', e => { e.preventDefault(); document.querySelector('main')!.innerHTML = ''; });
+  document.querySelector('button[aria-label="Send message"]')!.addEventListener('click', () => {
+    const response = document.createElement('model-response');
+    response.innerHTML = '<message-content><div class="markdown"><p>Sorry, something went wrong. Please try your request again.</p></div></message-content>';
+    document.querySelector('main')!.append(response);
+  });
+  await assert.rejects(runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi), (error: Error) => error.message === 'provider_error');
+});
+
+test('keeps other non-JSON Gemini prose as ui_changed', async () => {
+  const f = geminiFixture();
+  const { document } = f;
+  document.querySelector('a')!.addEventListener('click', e => { e.preventDefault(); document.querySelector('main')!.innerHTML = ''; });
+  document.querySelector('button[aria-label="Send message"]')!.addEventListener('click', () => {
+    const response = document.createElement('model-response');
+    response.innerHTML = '<message-content><div class="markdown"><p>Sorry, something went wrong. Here is a workaround.</p></div></message-content>';
+    document.querySelector('main')!.append(response);
+  });
+  await assert.rejects(runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi), /ui_changed:reply/);
+});

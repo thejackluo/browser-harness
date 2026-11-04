@@ -79,13 +79,14 @@ secrets instead, set `BROWSER_HARNESS_API_KEY` and `BROWSER_HARNESS_BRIDGE_TOKEN
 npm run -s token      # bridge token: paste into the extension popup
 npm run -s key        # API key: for harnesses that cannot read a file
 npm run -s opencode   # ready-to-use OpenCode config for this gateway
+npm run -s hermes     # Hermes Agent config.yaml snippet (contains the API key)
 ```
 
 Windows shortcut: `scripts/windows/setup-and-start.ps1` clones or updates
 `%USERPROFILE%\browser-harness`, builds it, starts the gateway, and copies the bridge
 token to your clipboard. This helper keeps its own keys in
 `%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete that file
-to rotate them, and passes them to the gateway as environment variables; `npm run -s token`, `key` and `opencode` reuse them. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key.
+to rotate them, and passes them to the gateway as environment variables; `npm run -s token`, `key`, `opencode` and `hermes` reuse them. It also writes `%USERPROFILE%\.config\opencode\opencode.json` if that file does not exist yet. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key; add `-Model gemini-browser` to test the Gemini tab.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\setup-and-start.ps1
@@ -115,6 +116,8 @@ WebSocket pairing to that extension origin as well as requiring the bridge token
 If a request fails with `tab_not_attached`, the tab was opened before the
 extension loaded. A `ui_changed` error names the step that failed (`new_chat`,
 `editor`, `insert`, `send`, or `reply`), so you can tell which selector needs updating.
+A `provider_error` means the site answered with its own error notice (Gemini's
+"Sorry, something went wrong"). The tab stays paired, so the harness can retry.
 
 After extension installation or reload, refresh the provider tabs to load the content
 script. Restart the gateway after source changes and rebuild/reload the extension
@@ -133,8 +136,8 @@ For clients supporting a configurable OpenAI Chat Completions endpoint:
 This does **not** claim compatibility with every OpenAI client. Responses API,
 Anthropic protocols, native reasoning fields, token counting, and advanced sampling
 options are not implemented. Unsupported fields return HTTP 400 rather than being
-silently ignored; the only accepted-but-ignored fields are the token ceilings and
-`stream_options` listed under the API contract. Disable automatic model/provider
+silently ignored; the only accepted-but-ignored fields are the token ceilings,
+`reasoning_effort` and `stream_options` listed under the API contract. Disable automatic model/provider
 fallback in your harness.
 
 Example (macOS / Linux; keep the gateway running in another terminal):
@@ -164,6 +167,30 @@ Pick the provider with `-m browser-harness/chatgpt-browser`,
 `-m browser-harness/gemini-browser`, `/models` inside OpenCode, or the config's
 `model` field.
 
+### Hermes Agent
+
+Hermes Agent talks to any OpenAI-compatible endpoint through its `custom` provider.
+Run `hermes model`, choose **Custom endpoint**, and enter `http://127.0.0.1:4318/v1`,
+the output of `npm run -s key`, and `chatgpt-browser` (or `gemini-browser`). Or merge
+the output of `npm run -s hermes` into the `model:` section of Hermes' `config.yaml`
+(`~/.hermes/config.yaml`; `%LOCALAPPDATA%\hermes\config.yaml` on native Windows).
+Switch providers inside a chat with `/model custom:gemini-browser`.
+The gateway accepts Hermes' `reasoning_effort` field but does not change the model
+or reasoning mode selected in your provider tab. Hermes executes tools on your
+computer: start in a disposable project with normal approval prompts, not `--yolo`.
+
+On native Windows, install Hermes using its
+[official installer](https://hermes-agent.nousresearch.com/docs/getting-started/installation):
+
+```powershell
+iex (irm https://hermes-agent.nousresearch.com/install.ps1)
+```
+
+Keep the gateway PowerShell window open. In a second window, run `hermes model`
+and use the settings above, then launch `hermes chat -m chatgpt-browser` or
+`hermes chat -m gemini-browser` in your project directory. Browser Harness does not
+install Hermes or OpenCode itself.
+
 One live run with OpenCode 1.19.5 used its default `build` agent (read, glob, grep,
 apply_patch, bash and other tools) against a paired ChatGPT Plus tab. It fixed a
 failing test in about 45 seconds and, in a second task, added a function plus tests
@@ -191,7 +218,7 @@ not a general-purpose autonomous coding agent.
 
 Supported request fields: `model`, `messages`, `stream`, `tools`, `tool_choice`
 (`auto`, `none`, `required`), and `parallel_tool_calls`. `max_tokens`,
-`max_completion_tokens` and `stream_options` are accepted for harness
+`max_completion_tokens`, `reasoning_effort` (a string of up to 32 characters) and `stream_options` are accepted for harness
 compatibility but ignored: the browser reply length cannot be capped and no usage
 chunk is emitted. Messages accept roles `system`, `developer`, `user`, `assistant`,
 and `tool`, with string content, an array of `{"type":"text"}` parts (joined with
