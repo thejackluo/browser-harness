@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Pair one ChatGPT and/or Gemini tab with your authenticated local agent gateway.",
   "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkb2isJH2E8ArPWXIuTYE6vn7RrXRAS2kE3oQx+LO4xhSaquLjExijDbyY/zJ/ZcAw25xxnMpLzAwckaLVV1REBjccH1npyRoeaY+WA6Sk58zFX/zCyDxhjiz11inbL+g4vGd2XLHRsRpFh6kjFnMmuiIqWNlL8WU3WQiUIc9vECbiFagiTaJ9jlXrdRmk7Jy0/v0VIYrn14KEBVASZeG+SzKbesaq3fEV2NV7Jji+PGO4v29mBzwUPp8LhViWOa547y5Fr8yli9n5mjGQa7EyOleARxk76rHx2IYkHPJ1yQV8wdiCWmdbINRlhYiIBvSK6VNz0pXsHBsIurOPQUZuwIDAQAB",
   "permissions": ["storage", "activeTab"],
   "host_permissions": ["https://chatgpt.com/*", "https://gemini.google.com/*"],
   "background": { "service_worker": "background.js", "type": "module" },

@@ -4,12 +4,13 @@ import { once } from 'node:events';
 import http from 'node:http';
 import { WebSocket } from 'ws';
 import { createGateway } from '../src/server.js';
+import { EXTENSION_ID } from '../src/bridge.js';
 
 const apiKey = 'test-api-key-not-a-secret-000000000000000';
 const bridgeToken = 'test-bridge-token-not-a-secret-000000000';
-const origin = `chrome-extension://${'a'.repeat(32)}`;
+const origin = `chrome-extension://${EXTENSION_ID}`;
 const request = { model: 'chatgpt-browser', messages: [{ role: 'user', content: 'Hello' }] };
-async function setup(t: TestContext, options: { timeoutMs?: number; maxQueue?: number } = {}) {
+async function setup(t: TestContext, options: { timeoutMs?: number; maxQueue?: number; bridgeToken?: string } = {}) {
   const gateway = createGateway({ apiKey, bridgeToken, port: 0, ...options });
   const port = await gateway.listen();
   t.after(() => gateway.close());
@@ -57,6 +58,29 @@ test('rejects unpaired requests and wrong bridge tokens', async t => {
   assert.equal((await post()).status, 503);
   const socket = await pair('wrong');
   assert.equal(socket.readyState, WebSocket.CLOSED);
+  assert.equal(gateway.bridge.connected, false);
+});
+
+test('pairs the pinned extension without a token unless one is configured', async t => {
+  const { pair, port, gateway } = await setup(t, { bridgeToken: undefined });
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { origin });
+  await once(socket, 'open');
+  const ready = once(socket, 'message');
+  socket.send(JSON.stringify({ type: 'hello', protocol: 1, provider: 'gemini' }));
+  assert.equal(JSON.parse((await ready)[0].toString()).type, 'ready');
+  assert.equal(gateway.bridges.gemini.connected, true);
+  assert.equal((await pair()).readyState, WebSocket.OPEN);
+  const other = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { origin: `chrome-extension://${'a'.repeat(32)}` });
+  await new Promise<void>(resolve => other.on('error', error => { assert.match(error.message, /403/); resolve(); }));
+});
+
+test('a configured bridge token is still required', async t => {
+  const { port, gateway } = await setup(t);
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/bridge`, { origin });
+  await once(socket, 'open');
+  const closed = once(socket, 'close');
+  socket.send(JSON.stringify({ type: 'hello', protocol: 1 }));
+  await closed;
   assert.equal(gateway.bridge.connected, false);
 });
 

@@ -1,13 +1,14 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { acceptPeer, BrowserBridge, PROVIDERS, secretEquals, type Provider } from './bridge.js';
+import { acceptPeer, BrowserBridge, EXTENSION_ID, PROVIDERS, secretEquals, type Provider } from './bridge.js';
 import { GatewayError } from './errors.js';
 import { MODELS, parseReply, prepareRequest, type AssistantMessage, type ModelId } from './protocol.js';
 
 export interface GatewayOptions {
   apiKey: string;
-  bridgeToken: string;
+  /** Optional extra pairing secret; the pinned extension origin is always required. */
+  bridgeToken?: string;
   port?: number;
   timeoutMs?: number;
   maxQueue?: number;
@@ -51,7 +52,7 @@ function completion(response: ServerResponse, model: ModelId, message: Assistant
 }
 
 export function createGateway(options: GatewayOptions) {
-  if (options.apiKey.length < 32 || options.bridgeToken.length < 32 || options.apiKey === options.bridgeToken) {
+  if (options.apiKey.length < 32 || (options.bridgeToken !== undefined && (options.bridgeToken.length < 32 || options.apiKey === options.bridgeToken))) {
     throw new Error('Provide distinct API and bridge keys, each at least 32 characters.');
   }
   if (options.extensionId && !/^[a-p]{32}$/.test(options.extensionId)) throw new Error('Invalid extension ID.');
@@ -94,7 +95,7 @@ export function createGateway(options: GatewayOptions) {
   server.on('upgrade', (request, socket, head) => {
     const port = (server.address() as { port: number } | null)?.port;
     const origin = request.headers.origin ?? '';
-    const originAllowed = options.extensionId ? origin === `chrome-extension://${options.extensionId}` : /^chrome-extension:\/\/[a-p]{32}$/.test(origin);
+    const originAllowed = origin === `chrome-extension://${options.extensionId ?? EXTENSION_ID}`;
     if (request.url !== '/bridge' || request.headers.host !== `127.0.0.1:${port}` || !originAllowed) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return;
     }
