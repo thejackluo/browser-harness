@@ -11,15 +11,14 @@ $previousLocation = Get-Location
 New-Item -ItemType Directory $testHome | Out-Null
 New-Item -ItemType Junction -Path $repo -Target $source | Out-Null
 
-# Avoid clone/update, installs, launching servers, or changing the real clipboard.
+# Avoid clone/update, installs, or launching servers.
 function git { $global:LASTEXITCODE = 0 }
 function npm { $global:LASTEXITCODE = 0 }
-function Set-Clipboard { param($Value) }
 
 try {
   $env:USERPROFILE = $testHome
   $env:BROWSER_HARNESS_API_KEY = 'stale-environment-key'
-  & "$source\scripts\windows\setup-and-start.ps1"
+  & "$source\scripts\windows\setup-and-start.ps1" -ShortcutDir $testHome
   $keyDir = Join-Path $testHome '.browser-harness'
   $keys = Get-Content (Join-Path $keyDir 'keys.json') -Raw | ConvertFrom-Json
   $configFile = Join-Path $testHome '.config\opencode\opencode.json'
@@ -29,6 +28,9 @@ try {
   if ((Get-Content (Join-Path $keyDir 'api_key') -Raw) -ne $keys.api) { throw 'OpenCode and gateway keys must match.' }
   if ([System.IO.File]::ReadAllBytes($configFile)[0] -ne 123) { throw 'OpenCode JSON must have no UTF-8 BOM.' }
   if ($env:BROWSER_HARNESS_API_KEY -ne $keys.api) { throw 'Gateway must use helper keys.' }
+  if ($env:BROWSER_HARNESS_BRIDGE_TOKEN) { throw 'Pairing must not need a bridge token.' }
+  $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $testHome 'Browser Harness.lnk'))
+  if (-not (Test-Path $link.FullName) -or $link.Arguments -notlike '*setup-and-start.ps1*') { throw 'Desktop shortcut missing or wrong.' }
   $apiKeyFile = Join-Path $keyDir 'api_key'
   $acl = Get-Acl $apiKeyFile
   if (-not $acl.AreAccessRulesProtected) { throw 'API key file must not inherit ACLs.' }
@@ -38,12 +40,12 @@ try {
   $originalConfig = Get-Content $configFile -Raw
   $keys.api = 'rotated-test-key'
   $keys | ConvertTo-Json | Set-Content -Encoding ascii (Join-Path $keyDir 'keys.json')
-  & "$source\scripts\windows\setup-and-start.ps1"
+  & "$source\scripts\windows\setup-and-start.ps1" -ShortcutDir $testHome
   if ((Get-Content $configFile -Raw) -ne $originalConfig) { throw 'Existing JSON config changed.' }
   if ((Get-Content $apiKeyFile -Raw) -ne $keys.api) { throw 'Existing OpenCode config must follow key rotation.' }
   Remove-Item $configFile
   Set-Content (Join-Path (Split-Path $configFile) 'opencode.jsonc') '// existing config'
-  & "$source\scripts\windows\setup-and-start.ps1"
+  & "$source\scripts\windows\setup-and-start.ps1" -ShortcutDir $testHome
   if (Test-Path $configFile) { throw 'Must not shadow existing JSONC config.' }
 
   # smoke.ps1 exits with npm's status; use an isolated process to exercise it.

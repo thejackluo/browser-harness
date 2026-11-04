@@ -58,60 +58,52 @@ Stop if your provider does not permit your intended use.
 
 ## Setup
 
-```sh
-npm ci
-npm run build
-```
-
-Start the gateway:
-
-```sh
-npm start
-```
-
-On first start it creates two distinct random secrets, readable only by your user:
-`~/.browser-harness/api_key` (for agent harnesses) and `~/.browser-harness/bridge_token`
-(for pairing the extension). Delete them to rotate. They are never logged. To use your own
-secrets instead, set `BROWSER_HARNESS_API_KEY` and `BROWSER_HARNESS_BRIDGE_TOKEN`
-(at least 32 characters each); those take precedence over the files.
-
-```sh
-npm run -s token      # bridge token: paste into the extension popup
-npm run -s key        # API key: for harnesses that cannot read a file
-npm run -s opencode   # ready-to-use OpenCode config for this gateway
-npm run -s hermes     # Hermes Agent config.yaml snippet (contains the API key)
-```
-
-Windows shortcut: `scripts/windows/setup-and-start.ps1` clones or updates
-`%USERPROFILE%\browser-harness`, builds it, starts the gateway, and copies the bridge
-token to your clipboard. This helper keeps its own keys in
-`%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete that file
-to rotate them, and passes them to the gateway as environment variables; `npm run -s token`, `key`, `opencode` and `hermes` reuse them. It also writes `%USERPROFILE%\.config\opencode\opencode.json` if that file does not exist yet. `scripts/windows/smoke.ps1` runs the smoke test with the stored API key; add `-Model gemini-browser` to test the Gemini tab.
+**Windows.** Clone once, then run the helper:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\setup-and-start.ps1
+git clone https://github.com/thejackluo/browser-harness.git "$env:USERPROFILE\browser-harness"
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\browser-harness\scripts\windows\setup-and-start.ps1"
 ```
 
-The server binds to `127.0.0.1` only. `BROWSER_HARNESS_PORT` optionally changes
-port 4318.
+It updates and builds the repo, creates an API key, adds a `browser-harness` provider
+to your OpenCode config, creates a **Browser Harness** desktop shortcut, and starts the
+gateway. Next time, just double-click the shortcut. Keys live in
+`%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete it to
+rotate the key. `scripts/windows/smoke.ps1 [-Model gemini-browser]` runs a tool-loop
+smoke test.
 
-1. Open `chrome://extensions`, enable **Developer mode**, select **Load unpacked**,
-   and choose `build/extension` in this repository.
-2. Open a dedicated `https://chatgpt.com/` and/or `https://gemini.google.com/app` tab
-   and sign in manually. Select the desired model in the website. No provider
-   passwords or cookies enter the gateway.
-3. Open the extension popup **on that tab**. Enter the gateway port and the bridge
-   token (`npm run -s token`), then **Pair & arm this tab**. Repeat on the other
-   provider's tab if you want both. The API key is a different secret and must not
-   be pasted into the extension.
-4. The popup should report **Armed** for each paired provider. Keep the tabs open and
-   avoid interacting with them while requests run. Each request clicks New chat;
-   prior chats are not deleted. Requests are serialized per provider, so ChatGPT and
-   Gemini requests can run at the same time.
+**Other systems:** `npm ci && npm run build && npm start`.
 
-Optional hardening: copy the installed extension ID from `chrome://extensions`
-and set `BROWSER_HARNESS_EXTENSION_ID` before starting the gateway. This restricts
-WebSocket pairing to that extension origin as well as requiring the bridge token.
+Then:
+
+1. **Load the extension once:** `chrome://extensions` → **Developer mode** →
+   **Load unpacked** → `build/extension`. After an update, click **Reload** there and
+   refresh your ChatGPT/Gemini tabs.
+2. **Arm a tab:** in a dedicated `https://chatgpt.com/` or
+   `https://gemini.google.com/app` tab, sign in manually and pick your model, then click
+   the Browser Harness extension → **Arm this tab**. Arm one tab per provider. Each
+   request clicks New chat there, so leave the tab alone while requests run.
+3. **Connect harnesses:** `npm run setup -- opencode` and/or `npm run setup -- hermes`.
+4. **Check everything:** `npm run doctor` lists what works and the next fix.
+
+```sh
+npm run -s key        # API key, for harnesses that cannot read ~/.browser-harness/api_key
+npm run -s opencode   # print an OpenCode config instead of editing yours
+npm run -s hermes     # print a Hermes config.yaml snippet (contains the API key)
+```
+
+The gateway binds to `127.0.0.1:4318` (`BROWSER_HARNESS_PORT` changes the port; the
+popup's **Advanced** section has the matching field). `npm start` creates
+`~/.browser-harness/api_key` on first run; set `BROWSER_HARNESS_API_KEY` to use your
+own key instead. Keys and prompts are never logged.
+
+**Pairing security.** The extension manifest carries a public `key`, so its ID is the
+same everywhere (`EXTENSION_ID` in `src/bridge.ts`), and the gateway accepts bridge
+WebSockets only from that extension origin. Websites cannot open that connection. A
+program running as your user could, but such a program can already read your API key.
+For a second secret, set `BROWSER_HARNESS_BRIDGE_TOKEN` (32+ characters) and enter it
+under **Advanced** in the popup. `BROWSER_HARNESS_EXTENSION_ID` trusts a differently
+signed build instead.
 
 If a request fails with `tab_not_attached`, the tab was opened before the
 extension loaded. A `ui_changed` error names the step that failed (`new_chat`,
@@ -170,10 +162,10 @@ Pick the provider with `-m browser-harness/chatgpt-browser`,
 ### Hermes Agent
 
 Hermes Agent talks to any OpenAI-compatible endpoint through its `custom` provider.
-Run `hermes model`, choose **Custom endpoint**, and enter `http://127.0.0.1:4318/v1`,
-the output of `npm run -s key`, and `chatgpt-browser` (or `gemini-browser`). Or merge
-the output of `npm run -s hermes` into the `model:` section of Hermes' `config.yaml`
-(`~/.hermes/config.yaml`; `%LOCALAPPDATA%\hermes\config.yaml` on native Windows).
+`npm run setup -- hermes` runs `hermes config set` for `model.provider`,
+`model.default` (`chatgpt-browser`), `model.base_url` and `model.api_key`. To do it by
+hand, run `hermes model` → **Custom endpoint** with `http://127.0.0.1:4318/v1` and the
+output of `npm run -s key`, or merge `npm run -s hermes` into Hermes' `config.yaml`.
 Switch providers inside a chat with `/model custom:gemini-browser`.
 The gateway accepts Hermes' `reasoning_effort` field but does not change the model
 or reasoning mode selected in your provider tab. Hermes executes tools on your
@@ -186,8 +178,8 @@ On native Windows, install Hermes using its
 iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 ```
 
-Keep the gateway PowerShell window open. In a second window, run `hermes model`
-and use the settings above, then launch `hermes chat -m chatgpt-browser` or
+Keep the gateway PowerShell window open. In a second window, run
+`npm run setup -- hermes` from the repo once, then launch `hermes chat -m chatgpt-browser` or
 `hermes chat -m gemini-browser` in your project directory. Browser Harness does not
 install Hermes or OpenCode itself.
 
@@ -262,8 +254,8 @@ headers, accepts only the exact loopback Host header, and enables no CORS access
 - Anyone with your gateway API key can submit prompts and consume your allowance.
   Anyone controlling the armed tab can influence responses. Use only trusted local
   clients; this is not a multi-user or remotely accessible service.
-- The bridge token exists in extension service-worker memory only, not content
-  scripts or persistent storage. Only the non-secret port is saved in session storage.
+- Pairing trusts only the pinned extension origin. An optional bridge token exists in
+  extension service-worker memory only, not content scripts or persistent storage. Only the non-secret port is saved in session storage.
   Service-worker/browser restarts may require re-pairing. Heartbeats keep an active
   connection alive on supported Chrome versions.
 - The extension has access only to ChatGPT pages, local WebSocket connections,

@@ -26,7 +26,8 @@ function providerFor(url: string | undefined): Provider | undefined {
 }
 
 async function pair(port: number, token: string, selectedTab: number): Promise<void> {
-  if (!Number.isInteger(port) || port < 1024 || port > 65535 || token.length < 32) throw new Error('Enter the gateway port and bridge token (not API key).');
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Enter a gateway port between 1024 and 65535.');
+  if (token && token.length < 32) throw new Error('A bridge token is only needed if you set one; leave it empty otherwise.');
   const tab = await chrome.tabs.get(selectedTab);
   const provider = providerFor(tab.url);
   if (!provider) throw new Error('Open a ChatGPT or Gemini tab, then click the extension.');
@@ -37,8 +38,8 @@ async function pair(port: number, token: string, selectedTab: number): Promise<v
   const peer = new WebSocket(`ws://127.0.0.1:${port}/bridge`);
   session.socket = peer;
   session.status = 'Connecting';
-  peer.onopen = () => { peer.send(JSON.stringify({ type: 'hello', protocol: 1, provider, token })); };
-  peer.onerror = () => { session.status = 'Connection failed. Check the gateway and pair again.'; };
+  peer.onopen = () => { peer.send(JSON.stringify({ type: 'hello', protocol: 1, provider, ...(token ? { token } : {}) })); };
+  peer.onerror = () => { session.status = 'Gateway not reachable. Start it (npm start or the desktop shortcut), then click Arm again.'; };
   peer.onclose = () => {
     if (session.socket !== peer) return;
     clearInterval(session.heartbeat);
@@ -93,8 +94,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     respond({ ok: true });
     return false;
   }
-  if (message.type === 'pair' && typeof message.token === 'string' && typeof message.tabId === 'number') {
-    void pair(message.port, message.token, message.tabId).then(() => respond({ ok: true })).catch(error => respond({ error: error.message }));
+  if (message.type === 'pair' && (message.token === undefined || typeof message.token === 'string') && typeof message.tabId === 'number') {
+    void pair(message.port, message.token ?? '', message.tabId).then(() => respond({ ok: true })).catch(error => respond({ error: error.message }));
     return true;
   }
   return false;

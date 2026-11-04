@@ -1,4 +1,6 @@
-# Browser Harness: clone/update, build, and start the local gateway (Windows PowerShell 5.1+).
+# Browser Harness: clone/update, build, connect OpenCode, and start the local gateway (Windows PowerShell 5.1+).
+# After the first run, the "Browser Harness" desktop shortcut runs this script again.
+param([string]$ShortcutDir = [Environment]::GetFolderPath('Desktop'))
 $ErrorActionPreference = 'Stop'
 foreach ($command in @('git', 'node', 'npm')) {
   if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
@@ -30,7 +32,7 @@ if ($LASTEXITCODE) { throw 'build failed' }
 if (-not (Test-Path $keyFile)) {
   New-Item -ItemType Directory -Force $keyDir | Out-Null
   $gen = { node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" }
-  @{ api = (& $gen); bridge = (& $gen) } | ConvertTo-Json | Set-Content -Encoding ascii $keyFile
+  @{ api = (& $gen) } | ConvertTo-Json | Set-Content -Encoding ascii $keyFile
 }
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 icacls $keyDir /inheritance:r /grant:r "*${sid}:(OI)(CI)F" | Out-Null
@@ -38,46 +40,39 @@ if ($LASTEXITCODE) { throw 'Could not restrict permissions on the local key dire
 icacls $keyFile /inheritance:r /grant:r "*${sid}:F" | Out-Null
 if ($LASTEXITCODE) { throw 'Could not restrict permissions on the local key file.' }
 $keys = Get-Content $keyFile -Raw | ConvertFrom-Json
-if (-not $keys.api -or -not $keys.bridge) { throw 'Local keys.json must contain nonempty api and bridge keys.' }
+if (-not $keys.api) { throw 'Local keys.json must contain a nonempty api key.' }
 $env:BROWSER_HARNESS_HOME = $keyDir
-$previousApiKey = $env:BROWSER_HARNESS_API_KEY
-try {
-  $env:BROWSER_HARNESS_API_KEY = $null
-  node dist/src/cli.js key | Out-Null
-  if ($LASTEXITCODE) { throw 'Synchronizing the OpenCode key file failed.' }
-}
-finally {
-  $env:BROWSER_HARNESS_API_KEY = $previousApiKey
-}
+$env:BROWSER_HARNESS_API_KEY = $keys.api
+$env:BROWSER_HARNESS_BRIDGE_TOKEN = $null
+$baseUrl = 'http://127.0.0.1:4318/v1'
+
+# Adds only the browser-harness provider; other OpenCode settings are kept.
+node dist/src/cli.js setup opencode
+if ($LASTEXITCODE) { Write-Warning 'OpenCode was not configured automatically (see the message above).' }
 $apiKeyFile = Join-Path $keyDir 'api_key'
 icacls $apiKeyFile /inheritance:r /grant:r "*${sid}:F" | Out-Null
 if ($LASTEXITCODE) { throw 'Could not restrict permissions on the OpenCode key file.' }
-$opencodeDir = Join-Path $env:USERPROFILE '.config\opencode'
-$opencodeFile = Join-Path $opencodeDir 'opencode.json'
-if (-not ((Test-Path $opencodeFile) -or (Test-Path (Join-Path $opencodeDir 'opencode.jsonc')))) {
-  New-Item -ItemType Directory -Force $opencodeDir | Out-Null
-  $previousApiKey = $env:BROWSER_HARNESS_API_KEY
-  try {
-    # Use a file reference so OpenCode works in a second PowerShell window too.
-    $env:BROWSER_HARNESS_API_KEY = $null
-    $config = node dist/src/cli.js opencode
-    if ($LASTEXITCODE) { throw 'Generating the OpenCode config failed.' }
-    [System.IO.File]::WriteAllText($opencodeFile, ($config -join "`n"), (New-Object System.Text.UTF8Encoding $false))
-  }
-  finally {
-    $env:BROWSER_HARNESS_API_KEY = $previousApiKey
-  }
-  Write-Host "Wrote OpenCode config: $opencodeFile" -ForegroundColor Cyan
+
+if (Get-Command hermes -ErrorAction SilentlyContinue) {
+  $hermesUrl = (hermes config get model.base_url 2>$null | Out-String).Trim()
+  if ($hermesUrl -ne $baseUrl) { Write-Host "Hermes found. To use Browser Harness in Hermes, run once: cd $repo; npm run setup -- hermes" -ForegroundColor Yellow }
 }
-else {
-  Write-Host "OpenCode config already exists; merge in the output of 'npm run -s opencode' from $repo" -ForegroundColor Yellow
+
+if ($ShortcutDir) {
+  $shell = New-Object -ComObject WScript.Shell
+  $link = $shell.CreateShortcut((Join-Path $ShortcutDir 'Browser Harness.lnk'))
+  $link.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  $link.Arguments = "-NoExit -ExecutionPolicy Bypass -File `"$repo\scripts\windows\setup-and-start.ps1`""
+  $link.WorkingDirectory = $repo
+  $link.Description = 'Update and start the Browser Harness gateway'
+  $link.Save()
 }
-$env:BROWSER_HARNESS_API_KEY = $keys.api
-$env:BROWSER_HARNESS_BRIDGE_TOKEN = $keys.bridge
-Set-Clipboard -Value $keys.bridge
 
 Write-Host ''
-Write-Host "Extension folder: $repo\build\extension" -ForegroundColor Cyan
-Write-Host 'The bridge token is on your clipboard. Paste it into the extension popup.' -ForegroundColor Cyan
-Write-Host 'Keep this window open. Press Ctrl+C to stop the gateway.' -ForegroundColor Cyan
+Write-Host 'Next:' -ForegroundColor Cyan
+Write-Host "  1. First time only: chrome://extensions -> Developer mode -> Load unpacked -> $repo\build\extension" -ForegroundColor Cyan
+Write-Host '     After an update, click Reload on Browser Harness there and refresh your ChatGPT/Gemini tabs.' -ForegroundColor Cyan
+Write-Host '  2. In a ChatGPT or Gemini tab, click the Browser Harness extension, then "Arm this tab".' -ForegroundColor Cyan
+Write-Host "  3. Check everything from a second window: cd $repo; npm run doctor" -ForegroundColor Cyan
+Write-Host 'Keep this window open. Press Ctrl+C to stop the gateway. Next time, use the Browser Harness desktop shortcut.' -ForegroundColor Cyan
 npm start

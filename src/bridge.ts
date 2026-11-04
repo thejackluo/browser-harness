@@ -19,6 +19,8 @@ interface Job {
 const uiStages = new Set(['new_chat', 'editor', 'insert', 'send', 'reply']);
 export const PROVIDERS = { chatgpt: 'ChatGPT', gemini: 'Gemini' } as const;
 export type Provider = keyof typeof PROVIDERS;
+/** Fixed by the public `key` in extension/manifest.json, so every install has the same origin. */
+export const EXTENSION_ID = 'dhgboignmjemkhkhknadoeagnoaibloh';
 export function isProvider(value: unknown): value is Provider {
   return typeof value === 'string' && Object.hasOwn(PROVIDERS, value);
 }
@@ -32,8 +34,8 @@ const providerErrors = (label: string): Record<string, string> => ({
   cancelled: 'Browser request was cancelled.',
 });
 
-/** Authenticates a new extension socket, then hands it to the bridge for the provider it names. */
-export function acceptPeer(socket: WebSocket, token: string, bridges: Record<Provider, BrowserBridge>): void {
+/** Authenticates a new extension socket (origin already checked; token only if configured), then hands it to the bridge for the provider it names. */
+export function acceptPeer(socket: WebSocket, token: string | undefined, bridges: Record<Provider, BrowserBridge>): void {
   const authTimer = setTimeout(() => socket.close(1008, 'Pairing required'), 5000);
   socket.on('error', () => socket.terminate());
   socket.on('close', () => clearTimeout(authTimer));
@@ -43,7 +45,7 @@ export function acceptPeer(socket: WebSocket, token: string, bridges: Record<Pro
     try { message = JSON.parse(data.toString()); } catch { socket.close(1008, 'Invalid message'); return; }
     const provider = message?.provider ?? 'chatgpt';
     if (!message || typeof message !== 'object' || message.type !== 'hello' || message.protocol !== 1 || !isProvider(provider) ||
-      typeof message.token !== 'string' || !secretEquals(message.token, token)) {
+      (token !== undefined && (typeof message.token !== 'string' || !secretEquals(message.token, token)))) {
       socket.close(1008, 'Pairing rejected'); return;
     }
     bridges[provider].attach(socket);

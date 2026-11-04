@@ -14,7 +14,7 @@ document.querySelector('#pair')!.addEventListener('submit', event => {
   event.preventDefault();
   void (async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const result = await chrome.runtime.sendMessage({ type: 'pair', port: Number(port.value), token: token.value, tabId: tab?.id });
+    const result = await chrome.runtime.sendMessage({ type: 'pair', port: Number(port.value), tabId: tab?.id, ...(token.value ? { token: token.value } : {}) });
     token.value = '';
     if (result.error) status.textContent = result.error;
     else await refresh();

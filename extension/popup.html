@@ -5,13 +5,16 @@
   <h1>Browser Harness</h1>
   <p>Open a dedicated ChatGPT or Gemini tab and choose your model manually. You can arm one tab per provider. Arming lets local agents create fresh chats in this tab. Do not use it for other work.</p>
   <form id="pair">
-    <label>Gateway port <input id="port" type="number" min="1024" max="65535" value="4318" required></label>
-    <label>Bridge token <input id="token" type="password" minlength="32" autocomplete="off" required></label>
-    <button type="submit">Pair &amp; arm this tab</button>
+    <button type="submit">Arm this tab</button>
+    <details>
+      <summary>Advanced</summary>
+      <label>Gateway port <input id="port" type="number" min="1024" max="65535" value="4318" required></label>
+      <label>Bridge token (only if you set BROWSER_HARNESS_BRIDGE_TOKEN) <input id="token" type="password" autocomplete="off"></label>
+    </details>
   </form>
   <button id="disconnect" type="button">Disconnect all / stop</button>
   <p id="status" role="status" aria-live="polite">Disconnected</p>
-  <small>Tokens are kept in service-worker memory only. No cookies are read. Images and voice are not yet supported.</small>
+  <small>The gateway only accepts this extension. Optional tokens stay in service-worker memory. No cookies are read. Images and voice are not yet supported.</small>
   <script type="module" src="popup.js"></script>
 </body>
 </html>
