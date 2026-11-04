@@ -78,6 +78,7 @@ test('setup opencode references a differing environment key instead of the file'
 test('setup opencode creates a fresh config and refuses to edit JSONC or invalid JSON', () => fixture(({ home, run }) => {
   const dir = join(home, '.config', 'opencode');
   assert.equal(run(['setup', 'opencode']).status, 0);
+  assert.match(readFileSync(join(home, '.browser-harness', 'api_key'), 'utf8'), /^[a-f0-9]{64}$/);
   assert.equal(JSON.parse(readFileSync(join(dir, 'opencode.json'), 'utf8')).model, 'browser-harness/chatgpt-browser');
   writeFileSync(join(dir, 'opencode.json'), '{ // comment\n}');
   const invalid = run(['setup', 'opencode']);

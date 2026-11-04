@@ -65,7 +65,8 @@ function opencodeConfig(useFile: boolean) {
 /** Adds or refreshes only the browser-harness provider in the user's global OpenCode config. */
 function setupOpencode(): void {
   // Prefer the persistent key file, unless the gateway was given a different key via the environment.
-  const useFile = !process.env.BROWSER_HARNESS_API_KEY || process.env.BROWSER_HARNESS_API_KEY === storedApiKey();
+  const fileKey = storedApiKey();
+  const useFile = !process.env.BROWSER_HARNESS_API_KEY || process.env.BROWSER_HARNESS_API_KEY === fileKey;
   if (!useFile) console.warn('BROWSER_HARNESS_API_KEY differs from the key file, so OpenCode will read the environment variable.');
   const file = join(opencodeDir, 'opencode.json');
   if (!existsSync(file) && existsSync(join(opencodeDir, 'opencode.jsonc'))) {
