@@ -29,9 +29,18 @@ try {
   if ((Get-Content (Join-Path $keyDir 'api_key') -Raw) -ne $keys.api) { throw 'OpenCode and gateway keys must match.' }
   if ([System.IO.File]::ReadAllBytes($configFile)[0] -ne 123) { throw 'OpenCode JSON must have no UTF-8 BOM.' }
   if ($env:BROWSER_HARNESS_API_KEY -ne $keys.api) { throw 'Gateway must use helper keys.' }
+  $apiKeyFile = Join-Path $keyDir 'api_key'
+  $acl = Get-Acl $apiKeyFile
+  if (-not $acl.AreAccessRulesProtected) { throw 'API key file must not inherit ACLs.' }
+  $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+  $rules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
+  if (@($rules | Where-Object { $_.IdentityReference -ne $sid }).Count) { throw 'Unexpected API key ACL principal.' }
   $originalConfig = Get-Content $configFile -Raw
+  $keys.api = 'rotated-test-key'
+  $keys | ConvertTo-Json | Set-Content -Encoding ascii (Join-Path $keyDir 'keys.json')
   & "$source\scripts\windows\setup-and-start.ps1"
   if ((Get-Content $configFile -Raw) -ne $originalConfig) { throw 'Existing JSON config changed.' }
+  if ((Get-Content $apiKeyFile -Raw) -ne $keys.api) { throw 'Existing OpenCode config must follow key rotation.' }
   Remove-Item $configFile
   Set-Content (Join-Path (Split-Path $configFile) 'opencode.jsonc') '// existing config'
   & "$source\scripts\windows\setup-and-start.ps1"
@@ -43,7 +52,8 @@ try {
     $escapedPath = $smokePath.Replace("'", "''")
     $command = @"
 function npm {
-  if ((`$args -join ' ') -ne 'run smoke -- $model') { throw 'Wrong smoke arguments' }
+  # PowerShell consumes -- for functions; native npm.cmd receives it literally.
+  if ((`$args -join ' ') -ne 'run smoke $model') { throw 'Wrong smoke arguments' }
   `$global:LASTEXITCODE = 7
 }
 & '$escapedPath' -Model $model

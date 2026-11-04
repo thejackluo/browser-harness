@@ -40,6 +40,18 @@ if ($LASTEXITCODE) { throw 'Could not restrict permissions on the local key file
 $keys = Get-Content $keyFile -Raw | ConvertFrom-Json
 if (-not $keys.api -or -not $keys.bridge) { throw 'Local keys.json must contain nonempty api and bridge keys.' }
 $env:BROWSER_HARNESS_HOME = $keyDir
+$previousApiKey = $env:BROWSER_HARNESS_API_KEY
+try {
+  $env:BROWSER_HARNESS_API_KEY = $null
+  node dist/src/cli.js key | Out-Null
+  if ($LASTEXITCODE) { throw 'Synchronizing the OpenCode key file failed.' }
+}
+finally {
+  $env:BROWSER_HARNESS_API_KEY = $previousApiKey
+}
+$apiKeyFile = Join-Path $keyDir 'api_key'
+icacls $apiKeyFile /inheritance:r /grant:r "*${sid}:F" | Out-Null
+if ($LASTEXITCODE) { throw 'Could not restrict permissions on the OpenCode key file.' }
 $opencodeDir = Join-Path $env:USERPROFILE '.config\opencode'
 $opencodeFile = Join-Path $opencodeDir 'opencode.json'
 if (-not ((Test-Path $opencodeFile) -or (Test-Path (Join-Path $opencodeDir 'opencode.jsonc')))) {
