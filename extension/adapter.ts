@@ -31,6 +31,7 @@ export interface ProviderUi {
   newChat: (document: Document) => HTMLElement | undefined;
   messageCount: (document: Document) => number;
   assistantText: (document: Document) => string;
+  submittedText?: (document: Document) => string;
   generating: (document: Document) => boolean;
   loggedOut: (document: Document) => boolean;
   /** A finished reply that is the provider's own error notice, not model output. */
@@ -54,6 +55,7 @@ export const chatgptUi: ProviderUi = {
     [...document.querySelectorAll<HTMLElement>('nav button')].find(el => visible(el) && el.textContent?.trim() === 'New chat'),
   messageCount: document => [...document.querySelectorAll('[data-message-author-role], [data-chatgpt-search-unit-key]')].filter(visible).length,
   assistantText: document => lastText(document, '[data-message-author-role="assistant"], [data-chatgpt-search-unit-key$=":assistant"]', '.markdown, [data-markdown-copy="contents"]', 'button, svg, [aria-hidden="true"]'),
+  submittedText: document => ([...document.querySelectorAll('[data-message-author-role="user"], [data-chatgpt-search-unit-key$=":user"]')].filter(visible).at(-1)?.textContent ?? '').trim(),
   generating: document => document.querySelector('[data-talvt-turn-state="in_progress"]') !== null,
   loggedOut: document => find(document, 'a[href*="/auth/login"], button[data-testid="login-button"]') !== undefined,
 };
@@ -79,6 +81,14 @@ export function uiFor(hostname: string): ProviderUi {
 function normalize(text: string): string {
   return text.replaceAll('\r\n', '\n').replace(/\n+/g, '\n').trim();
 }
+function editorText(editor: HTMLElement): string {
+  if (editor.tagName === 'TEXTAREA') return (editor as HTMLTextAreaElement).value;
+  // innerText includes layout-only line breaks, including inside long JSON strings and URLs.
+  const copy = editor.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+  copy.querySelectorAll('p, div, li').forEach(block => block.append('\n'));
+  return copy.textContent ?? '';
+}
 function blocked(document: Document, ui: ProviderUi): void {
   const alerts = [...document.querySelectorAll('[role="alert"], [role="dialog"]')].filter(visible).map(el => el.textContent ?? '').join(' ');
   if (/verify you are human|unusual activity|usage limit|reached.*limit|too many requests|try again later/i.test(alerts)) throw new BrowserError('provider_blocked');
@@ -96,11 +106,14 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
   else if (!fresh) throw new BrowserError('ui_changed', 'new_chat');
   const resetDeadline = time.now() + 15_000;
   let editor: HTMLElement | undefined;
+  let resetEditor: HTMLElement | undefined;
+  let resetSince = time.now();
   while (time.now() < resetDeadline) {
     check();
-    editor = find(document, ui.editor);
-    if (editor && ui.messageCount(document) === 0 && stopped()) break;
-    editor = undefined;
+    const candidate = find<HTMLElement>(document, ui.editor);
+    if (!candidate || ui.messageCount(document) !== 0 || !stopped() || candidate !== resetEditor) resetSince = time.now();
+    resetEditor = candidate;
+    if (candidate && ui.messageCount(document) === 0 && stopped() && time.now() - resetSince >= 500) { editor = candidate; break; }
     await time.wait(signal);
   }
   if (!editor) throw new BrowserError('ui_changed', 'editor');
@@ -118,12 +131,22 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
     selection?.addRange(range);
     if (!document.execCommand('insertText', false, prompt)) throw new BrowserError('ui_changed', 'insert');
   }
-  const inserted = editor.tagName === 'TEXTAREA' ? (editor as HTMLTextAreaElement).value : editor.innerText;
-  if (normalize(inserted) !== normalize(prompt)) throw new BrowserError('ui_changed', 'insert');
+  const checkInserted = () => {
+    if (find(document, ui.editor) !== editor || normalize(editorText(editor)) !== normalize(prompt)) throw new BrowserError('ui_changed', 'insert');
+  };
+  const insertDeadline = time.now() + 500;
+  while (true) {
+    check();
+    checkInserted();
+    if (time.now() >= insertDeadline) break;
+    // Let the website commit its composer state before its Send handler reads it.
+    await time.wait(signal);
+  }
   const sendDeadline = time.now() + 5000;
   let sent = false;
   while (time.now() < sendDeadline) {
     check();
+    checkInserted();
     const send = find<HTMLButtonElement>(document, ui.send);
     if (send && !send.disabled) { send.click(); sent = true; break; }
     await time.wait(signal);
@@ -133,6 +156,17 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
   let previous = '';
   let stableSince = time.now();
   try {
+    const nonce = ui.submittedText ? /"nonce":"([^"]+)"/.exec(prompt)?.[1] : undefined;
+    if (nonce) {
+      const submittedDeadline = time.now() + 5000;
+      while (true) {
+        check();
+        const submitted = ui.submittedText!(document);
+        if (submitted.includes(nonce)) break;
+        if (submitted || time.now() >= submittedDeadline) throw new BrowserError('ui_changed', 'send');
+        await time.wait(signal);
+      }
+    }
     while (time.now() < deadline) {
       check();
       const text = ui.assistantText(document);
