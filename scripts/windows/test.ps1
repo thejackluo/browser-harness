@@ -57,6 +57,7 @@ function npm {
   `$global:LASTEXITCODE = 7
 }
 & '$escapedPath' -Model $model
+exit `$LASTEXITCODE
 "@
     $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded
