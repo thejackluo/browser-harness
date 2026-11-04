@@ -132,13 +132,22 @@ async function doctor(): Promise<void> {
   }
   let opencode: { provider?: Record<string, { options?: { baseURL?: string } }> } | undefined;
   try { opencode = JSON.parse(readFileSync(join(opencodeDir, 'opencode.json'), 'utf8')); } catch { /* Missing or not plain JSON. */ }
-  if (opencode?.provider?.['browser-harness']?.options?.baseURL === baseURL) report('ok', 'OpenCode configured (browser-harness/chatgpt-browser, browser-harness/gemini-browser)');
+  const options = opencode?.provider?.['browser-harness']?.options as { baseURL?: string; apiKey?: string } | undefined;
+  const fileRef = /^\{file:(.+)\}$/.exec(options?.apiKey ?? '')?.[1];
+  let opencodeKey: string | undefined;
+  try { opencodeKey = fileRef ? readFileSync(fileRef, 'utf8').trim() : options?.apiKey === '{env:BROWSER_HARNESS_API_KEY}' ? process.env.BROWSER_HARNESS_API_KEY : options?.apiKey; } catch { /* Unreadable key file. */ }
+  if (options?.baseURL === baseURL && opencodeKey !== apiKey()) report('optional', 'OpenCode points at Browser Harness with a different API key.', '`npm run setup -- opencode`');
+  else if (options?.baseURL === baseURL) report('ok', 'OpenCode configured (browser-harness/chatgpt-browser, browser-harness/gemini-browser)');
   else if (existsSync(join(opencodeDir, 'opencode.jsonc'))) report('optional', 'OpenCode uses opencode.jsonc, which setup does not edit.', `Merge the output of \`npm run -s opencode\` into ${join(opencodeDir, 'opencode.jsonc')}.`);
   else report('optional', 'OpenCode is not configured for Browser Harness.', '`npm run setup -- opencode`');
   let hermesURL: string | undefined;
-  try { hermesURL = hermes(['config', 'get', 'model.base_url']).trim(); } catch { /* Not installed. */ }
+  let hermesProvider: string | undefined;
+  try {
+    hermesURL = hermes(['config', 'get', 'model.base_url']).trim();
+    hermesProvider = hermes(['config', 'get', 'model.provider']).trim();
+  } catch { /* Not installed. */ }
   if (hermesURL === undefined) report('optional', 'Hermes Agent not found (optional).', hermesInstall);
-  else if (hermesURL === baseURL) report('ok', 'Hermes configured (custom endpoint)');
+  else if (hermesURL === baseURL && hermesProvider === 'custom') report('ok', 'Hermes configured (custom endpoint; its API key is not checked)');
   else report('optional', 'Hermes is not using Browser Harness.', '`npm run setup -- hermes`');
   process.exitCode = healthy ? 0 : 1;
 }

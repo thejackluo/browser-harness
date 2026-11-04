@@ -111,6 +111,13 @@ test('setup hermes refuses keys that cmd could interpret', () => fixture(({ run 
   assert.match(result.stderr, /unsafe/);
 }));
 
+test('doctor flags an OpenCode config with a stale key', () => fixture(({ home, cli, run }) => {
+  cli(['setup', 'opencode'], { BROWSER_HARNESS_PORT: '45997' });
+  const result = run(['doctor'], { BROWSER_HARNESS_API_KEY: 'a-different-gateway-key', PATH: dirname(process.execPath), BROWSER_HARNESS_PORT: '45997' });
+  assert.match(result.stdout, /different API key/);
+  assert.ok(home);
+}));
+
 test('doctor explains how to start a missing gateway and fails', () => fixture(({ run }) => {
   const result = run(['doctor'], { BROWSER_HARNESS_PORT: '45999', PATH: dirname(process.execPath) });
   assert.equal(result.status, 1);
