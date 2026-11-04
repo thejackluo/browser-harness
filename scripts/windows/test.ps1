@@ -64,6 +64,8 @@ exit `$LASTEXITCODE
     if ($LASTEXITCODE -ne 7) { throw "Smoke did not preserve npm's exit code for $model." }
   }
   Write-Host 'Windows regression checks passed.'
+  # The last nested smoke check intentionally leaves exit code 7; report success to the CI host.
+  $global:LASTEXITCODE = 0
 }
 finally {
   Set-Location $previousLocation
