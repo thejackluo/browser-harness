@@ -97,7 +97,7 @@ function hermes(args: string[]): string {
 function setupHermes(): void {
   const key = apiKey();
   // Windows runs Hermes through `cmd /c`, so only pass values that cmd cannot interpret.
-  if (!/^[A-Za-z0-9._~-]+$/.test(key)) fail('The API key contains characters that are unsafe to pass to Hermes; run `hermes model` and enter it by hand.');
+  if (process.platform === 'win32' && !/^[A-Za-z0-9._~-]+$/.test(key)) fail('The API key contains characters that are unsafe to pass to Hermes; run `hermes model` and enter it by hand.');
   const settings: [string, string][] = [['model.provider', 'custom'], ['model.default', 'chatgpt-browser'], ['model.base_url', baseURL], ['model.api_key', key]];
   for (const [key, value] of settings) {
     try { hermes(['config', 'set', key, value]); } catch { fail(`Could not run \`hermes config set ${key}\`. ${hermesInstall}`); }

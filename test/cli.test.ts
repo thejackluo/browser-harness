@@ -106,7 +106,7 @@ test('setup hermes writes the custom endpoint through the Hermes CLI', { skip: p
   ]);
 }));
 
-test('setup hermes refuses keys that cmd could interpret', () => fixture(({ run }) => {
+test('setup hermes refuses keys that cmd could interpret', { skip: process.platform !== 'win32' }, () => fixture(({ run }) => {
   const result = run(['setup', 'hermes'], { BROWSER_HARNESS_API_KEY: `${'k'.repeat(40)}&calc` });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /unsafe/);
