@@ -64,7 +64,9 @@ function opencodeConfig(useFile: boolean) {
 
 /** Adds or refreshes only the browser-harness provider in the user's global OpenCode config. */
 function setupOpencode(): void {
-  storedApiKey();
+  // Prefer the persistent key file, unless the gateway was given a different key via the environment.
+  const useFile = !process.env.BROWSER_HARNESS_API_KEY || process.env.BROWSER_HARNESS_API_KEY === storedApiKey();
+  if (!useFile) console.warn('BROWSER_HARNESS_API_KEY differs from the key file, so OpenCode will read the environment variable.');
   const file = join(opencodeDir, 'opencode.json');
   if (!existsSync(file) && existsSync(join(opencodeDir, 'opencode.jsonc'))) {
     fail(`OpenCode uses ${join(opencodeDir, 'opencode.jsonc')}; merge in the output of \`npm run -s opencode\` by hand.`);
@@ -74,7 +76,7 @@ function setupOpencode(): void {
     try { config = JSON.parse(readFileSync(file, 'utf8')); } catch { config = undefined as never; }
     if (!config || typeof config !== 'object' || Array.isArray(config)) fail(`${file} is not plain JSON; merge in the output of \`npm run -s opencode\` by hand.`);
   }
-  const ours = opencodeConfig(true);
+  const ours = opencodeConfig(useFile);
   const providers = config.provider && typeof config.provider === 'object' ? config.provider : {};
   config = { $schema: ours.$schema, model: ours.model, small_model: ours.small_model, ...config, provider: { ...providers, 'browser-harness': ours.provider['browser-harness'] } };
   mkdirSync(opencodeDir, { recursive: true });

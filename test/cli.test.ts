@@ -58,7 +58,7 @@ test('setup opencode adds its provider and keeps the rest of an existing config'
   const file = join(home, '.config', 'opencode', 'opencode.json');
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify({ model: 'anthropic/claude', provider: { other: { name: 'Other' } }, theme: 'dark' }));
-  cli(['setup', 'opencode'], { BROWSER_HARNESS_API_KEY: 'env-key-is-not-written' });
+  cli(['setup', 'opencode']);
   const config = JSON.parse(readFileSync(file, 'utf8'));
   assert.equal(config.model, 'anthropic/claude');
   assert.equal(config.theme, 'dark');
@@ -67,6 +67,12 @@ test('setup opencode adds its provider and keeps the rest of an existing config'
   const once = readFileSync(file, 'utf8');
   cli(['setup', 'opencode']);
   assert.equal(readFileSync(file, 'utf8'), once);
+}));
+
+test('setup opencode references a differing environment key instead of the file', () => fixture(({ home, cli }) => {
+  cli(['setup', 'opencode'], { BROWSER_HARNESS_API_KEY: 'env-key-differs' });
+  const config = JSON.parse(readFileSync(join(home, '.config', 'opencode', 'opencode.json'), 'utf8'));
+  assert.equal(config.provider['browser-harness'].options.apiKey, '{env:BROWSER_HARNESS_API_KEY}');
 }));
 
 test('setup opencode creates a fresh config and refuses to edit JSONC or invalid JSON', () => fixture(({ home, run }) => {
