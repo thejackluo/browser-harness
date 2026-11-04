@@ -1,6 +1,6 @@
 export type UiStage = 'new_chat' | 'editor' | 'insert' | 'send' | 'reply';
 export class BrowserError extends Error {
-  constructor(public code: 'login_required' | 'provider_blocked' | 'ui_changed' | 'browser_busy' | 'cancelled', public stage?: UiStage) { super(stage ? `${code}:${stage}` : code); }
+  constructor(public code: 'login_required' | 'provider_blocked' | 'provider_error' | 'ui_changed' | 'browser_busy' | 'cancelled', public stage?: UiStage) { super(stage ? `${code}:${stage}` : code); }
 }
 
 export interface AdapterClock {
@@ -33,6 +33,8 @@ export interface ProviderUi {
   assistantText: (document: Document) => string;
   generating: (document: Document) => boolean;
   loggedOut: (document: Document) => boolean;
+  /** A finished reply that is the provider's own error notice, not model output. */
+  errorReply?: (text: string) => boolean;
 }
 
 function lastText(document: Document, turns: string, body: string, strip: string): string {
@@ -66,6 +68,7 @@ export const geminiUi: ProviderUi = {
   assistantText: document => lastText(document, 'model-response', 'message-content .markdown', 'button, svg, [aria-hidden="true"], .cdk-visually-hidden, .code-block-decoration, .attachment-container'),
   // Gemini leaves aria-busy set on finished replies in background tabs, so only the stop control is trusted.
   generating: () => false,
+  errorReply: text => /^Sorry, something went wrong\.(?: Please try (?:your request )?again\.)?$/i.test(text),
   loggedOut: document => find(document, 'a[href*="accounts.google.com/ServiceLogin"], a[href*="accounts.google.com/v3/signin"], a[aria-label="Sign in"]') !== undefined,
 };
 
@@ -138,7 +141,7 @@ export async function runChat(document: Document, prompt: string, signal: AbortS
       let complete = false;
       try { const parsed = JSON.parse(text); complete = parsed !== null && typeof parsed === 'object'; } catch { /* Still generating or a malformed final reply. */ }
       if (text && stopped() && time.now() - stableSince >= 2000) {
-        if (!complete) throw new BrowserError('ui_changed', 'reply');
+        if (!complete) throw ui.errorReply?.(text) ? new BrowserError('provider_error') : new BrowserError('ui_changed', 'reply');
         return text;
       }
       await time.wait(signal);

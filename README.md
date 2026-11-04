@@ -116,6 +116,8 @@ WebSocket pairing to that extension origin as well as requiring the bridge token
 If a request fails with `tab_not_attached`, the tab was opened before the
 extension loaded. A `ui_changed` error names the step that failed (`new_chat`,
 `editor`, `insert`, `send`, or `reply`), so you can tell which selector needs updating.
+A `provider_error` means the site answered with its own error notice (Gemini's
+"Sorry, something went wrong"). The tab stays paired, so the harness can retry.
 
 After extension installation or reload, refresh the provider tabs to load the content
 script. Restart the gateway after source changes and rebuild/reload the extension
