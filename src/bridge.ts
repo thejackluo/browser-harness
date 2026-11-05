@@ -28,6 +28,7 @@ const providerErrors = (label: string): Record<string, string> => ({
   login_required: `Sign into ${label} manually, then pair the tab again.`,
   provider_blocked: `${label} displayed a limit or challenge. Resolve it manually; no retries were made.`,
   provider_error: `${label} replied with an error notice. The tab stays paired; retry the request.`,
+  provider_refusal: `${label} declined the request. No automatic retry; the tab stays paired.`,
   ui_changed: `${label} UI could not be operated safely. Inspect the selected tab.`,
   tab_not_attached: `The extension is not attached to the selected tab. Reload the ${label} tab, then pair again.`,
   browser_busy: 'The selected tab is already running a request.',
@@ -83,11 +84,11 @@ export class BrowserBridge {
         const errors = providerErrors(this.label);
         const code = typeof message.code === 'string' && Object.hasOwn(errors, message.code) ? message.code : 'ui_changed';
         const stage = code === 'ui_changed' && uiStages.has(message.stage) ? ` Failed step: ${message.stage}.` : '';
-        if (code === 'provider_error') {
-          // The reply finished and the adapter saw the provider's own error notice, so the tab is idle and reusable.
+        if (code === 'provider_error' || code === 'provider_refusal') {
+          // Recognized finished notices leave an idle tab; refusals use a nonretryable status.
           this.active = undefined;
           job.cleanup();
-          job.reject(new GatewayError(502, code, errors[code]!));
+          job.reject(new GatewayError(code === 'provider_refusal' ? 422 : 502, code, errors[code]!));
           this.dispatch();
           return;
         }
