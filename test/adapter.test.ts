@@ -48,6 +48,103 @@ test('does not accept stable text while the stop control is visible', async () =
   assert.ok(ticks >= 22);
 });
 
+test('lets the composer commit inserted text before clicking Send', async () => {
+  const f = fixture();
+  let committed = 'previous draft';
+  f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
+  f.setTick(() => { committed = f.document.querySelector('textarea')!.value; });
+  f.document.querySelector('button')!.addEventListener('click', () => {
+    f.assistant(JSON.stringify({ type: 'final', content: committed }));
+  });
+  const text = await runChat(f.document, 'current prompt', new AbortController().signal, f.clock);
+  assert.equal(JSON.parse(text).content, 'current prompt');
+});
+
+test('does not send when the composer restores a different draft after insertion', async () => {
+  const f = fixture();
+  let sent = false;
+  f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
+  f.document.querySelector('button')!.addEventListener('click', () => {
+    sent = true;
+    f.assistant('{"type":"final","content":"wrong draft"}');
+  });
+  f.setTick(() => {
+    const editor = f.document.querySelector('textarea')!;
+    if (editor.value === 'current prompt') editor.value = 'restored draft';
+  });
+  await assert.rejects(runChat(f.document, 'current prompt', new AbortController().signal, f.clock), /ui_changed:insert/);
+  assert.equal(sent, false);
+});
+
+for (const unwrapped of [false, true]) {
+  test(`verifies rich-text ${unwrapped ? 'unwrapped first lines' : 'paragraphs'} without treating a layout-wrapped URL as changed input`, async () => {
+    const f = fixture();
+    const editor = f.document.createElement('div');
+    editor.id = 'prompt-textarea';
+    editor.contentEditable = 'true';
+    editor.tabIndex = 0;
+    f.document.querySelector('textarea')!.replaceWith(editor);
+    Object.defineProperty(editor, 'innerText', {
+      get: () => [...editor.children].map(p => p.textContent).join('\n').replace('https://', '\nhttps://'),
+    });
+    f.document.execCommand = (_command: string, _ui?: boolean, value?: string) => {
+      editor.replaceChildren(...(value ?? '').split('\n').map((line, index) => {
+        if (unwrapped && index === 0) return f.document.createTextNode(line);
+        const p = f.document.createElement(unwrapped ? 'div' : 'p');
+        if (line) p.textContent = line;
+        else p.append(f.document.createElement('br'));
+        return p;
+      }));
+      return true;
+    };
+    f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
+    f.document.querySelector('button')!.addEventListener('click', () => {
+      f.assistant('{"type":"final","content":"done"}');
+    });
+    const prompt = 'Read these tools.\n' + JSON.stringify({ documentation: 'https://example.com/tools', description: 'Use them exactly.' });
+    const text = await runChat(f.document, prompt, new AbortController().signal, f.clock);
+    assert.equal(JSON.parse(text).content, 'done');
+  });
+}
+
+test('rejects a stale submitted ChatGPT prompt before accepting its response', async () => {
+  const f = fixture();
+  f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
+  f.document.querySelector('button')!.addEventListener('click', () => {
+    const user = f.document.createElement('div');
+    user.dataset.chatgptSearchUnitKey = 'new:0:user';
+    user.textContent = '{"nonce":"previous-request"}';
+    f.document.body.append(user);
+    f.assistant('{"nonce":"previous-request","type":"final","content":"stale"}');
+  });
+  await assert.rejects(runChat(f.document, '{"nonce":"current-request"}', new AbortController().signal, f.clock), /ui_changed:send/);
+});
+
+test('waits for the current submitted prompt and ignores hidden previous ChatGPT turns', async () => {
+  const f = fixture();
+  f.document.querySelector('a')!.addEventListener('click', e => e.preventDefault());
+  const old = f.document.createElement('div');
+  old.dataset.chatgptSearchUnitKey = 'old:0:user';
+  old.hidden = true;
+  old.textContent = '{"nonce":"previous-request"}';
+  f.document.body.append(old);
+  let sent = false;
+  let user: HTMLElement | undefined;
+  f.document.querySelector('button')!.addEventListener('click', () => {
+    sent = true;
+    f.assistant('{"nonce":"current-request","type":"final","content":"done"}');
+  });
+  f.setTick(() => {
+    if (!sent || user) return;
+    user = f.document.createElement('div');
+    user.dataset.chatgptSearchUnitKey = 'new:0:user';
+    user.textContent = '{"nonce":"current-request"}';
+    f.document.body.append(user);
+  });
+  const text = await runChat(f.document, '{"nonce":"current-request"}', new AbortController().signal, f.clock);
+  assert.equal(JSON.parse(text).content, 'done');
+});
+
 test('fails closed when the fresh-chat selector is missing from an existing conversation', async () => {
   const f = fixture(); f.document.querySelector('a')!.remove(); f.assistant('old conversation');
   await assert.rejects(runChat(f.document, 'hello', new AbortController().signal, f.clock), /ui_changed:new_chat/);
@@ -93,12 +190,13 @@ for (const failure of ['timeout', 'challenge', 'abort'] as const) {
       f.document.body.append(stop);
     });
     if (failure === 'challenge') f.setTick(() => {
+      if (!f.document.querySelector('[data-testid="stop-button"]')) return;
       const alert = f.document.createElement('div');
       alert.setAttribute('role', 'alert');
       alert.textContent = 'Usage limit reached';
       f.document.body.append(alert);
     });
-    if (failure === 'abort') f.setTick(() => controller.abort());
+    if (failure === 'abort') f.setTick(() => { if (f.document.querySelector('[data-testid="stop-button"]')) controller.abort(); });
     const code = { timeout: 'ui_changed', challenge: 'provider_blocked', abort: 'cancelled' }[failure];
     await assert.rejects(runChat(f.document, 'hello', controller.signal, f.clock), new RegExp(code));
     assert.equal(stops, 1);
@@ -217,14 +315,33 @@ test('reports a finished Gemini error notice as a retryable provider_error', asy
   await assert.rejects(runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi), (error: Error) => error.message === 'provider_error');
 });
 
-test('keeps other non-JSON Gemini prose as ui_changed', async () => {
-  const f = geminiFixture();
-  const { document } = f;
-  document.querySelector('a')!.addEventListener('click', e => { e.preventDefault(); document.querySelector('main')!.innerHTML = ''; });
-  document.querySelector('button[aria-label="Send message"]')!.addEventListener('click', () => {
-    const response = document.createElement('model-response');
-    response.innerHTML = '<message-content><div class="markdown"><p>Sorry, something went wrong. Here is a workaround.</p></div></message-content>';
-    document.querySelector('main')!.append(response);
+for (const apostrophe of ["'", '’']) {
+  test(`reports a finished Gemini refusal with ${apostrophe} as provider_refusal`, async () => {
+    const f = geminiFixture();
+    const { document } = f;
+    document.querySelector('a')!.addEventListener('click', e => { e.preventDefault(); document.querySelector('main')!.innerHTML = ''; });
+    document.querySelector('button[aria-label="Send message"]')!.addEventListener('click', () => {
+      const response = document.createElement('model-response');
+      response.innerHTML = `<message-content><div class="markdown"><p>I${apostrophe}m having a hard time fulfilling your request. Can I help you with something else instead?</p></div></message-content>`;
+      document.querySelector('main')!.append(response);
+    });
+    await assert.rejects(runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi), (error: Error) => error.message === 'provider_refusal');
   });
-  await assert.rejects(runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi), /ui_changed:reply/);
-});
+}
+
+for (const prose of [
+  'Sorry, something went wrong. Here is a workaround.',
+  "I'm having a hard time fulfilling your request. Can I help you with something else instead? Here is an example tool call: {}",
+]) {
+  test(`keeps other non-JSON Gemini prose as ui_changed: ${prose}`, async () => {
+    const f = geminiFixture();
+    const { document } = f;
+    document.querySelector('a')!.addEventListener('click', e => { e.preventDefault(); document.querySelector('main')!.innerHTML = ''; });
+    document.querySelector('button[aria-label="Send message"]')!.addEventListener('click', () => {
+      const response = document.createElement('model-response');
+      response.innerHTML = `<message-content><div class="markdown"><p>${prose}</p></div></message-content>`;
+      document.querySelector('main')!.append(response);
+    });
+    await assert.rejects(runChat(document, 'hello', new AbortController().signal, f.clock, geminiUi), /ui_changed:reply/);
+  });
+}

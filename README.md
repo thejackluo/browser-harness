@@ -110,6 +110,10 @@ extension loaded. A `ui_changed` error names the step that failed (`new_chat`,
 `editor`, `insert`, `send`, or `reply`), so you can tell which selector needs updating.
 A `provider_error` means the site answered with its own error notice (Gemini's
 "Sorry, something went wrong"). The tab stays paired, so the harness can retry.
+A `provider_refusal` (HTTP 422) means Gemini returned its recognized "I'm having a
+hard time fulfilling your request" notice. No automatic retry is made; the idle tab
+stays paired for a different request. This classification does not explain or
+remove the provider's refusal. Other non-JSON replies still fail closed.
 
 After extension installation or reload, refresh the provider tabs to load the content
 script. Restart the gateway after source changes and rebuild/reload the extension

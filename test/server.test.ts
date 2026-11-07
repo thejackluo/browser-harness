@@ -227,6 +227,30 @@ test('provider error notices fail one request but keep the tab paired', async t 
   assert.equal((await recovered.json()).choices[0].message.content, 'recovered');
 });
 
+test('provider refusals are nonretryable and leave the tab usable for a different request', async t => {
+  const { post, pair, gateway } = await setup(t);
+  const socket = await pair(bridgeToken, 'gemini');
+  let runs = 0;
+  socket.on('message', data => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'run') return;
+    if (++runs === 1) socket.send(JSON.stringify({ type: 'error', id: message.id, code: 'provider_refusal', message: 'private page data' }));
+    else answer(socket, message, 'new answer');
+  });
+  const failed = await post({ ...request, model: 'gemini-browser' });
+  assert.equal(failed.status, 422);
+  const error = (await failed.json()).error;
+  assert.equal(error.code, 'provider_refusal');
+  assert.match(error.message, /Gemini declined/);
+  assert.doesNotMatch(error.message, /private page data/);
+  assert.equal(runs, 1);
+  assert.equal(gateway.bridges.gemini.connected, true);
+  const next = await post({ ...request, model: 'gemini-browser', messages: [{ role: 'user', content: 'A different request' }] });
+  assert.equal(next.status, 200);
+  assert.equal((await next.json()).choices[0].message.content, 'new answer');
+  assert.equal(runs, 2);
+});
+
 for (const [code, stage, expected] of [['ui_changed', 'new_chat', /Failed step: new_chat\./], ['ui_changed', '<script>', /Inspect the selected tab\."/], ['tab_not_attached', undefined, /Reload the ChatGPT tab/]] as const) {
   test(`reports ${code} ${stage ?? ''} with an allowlisted hint`, async t => {
     const { post, pair } = await setup(t);
