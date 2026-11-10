@@ -23,3 +23,34 @@ jobs:
         shell: powershell
         run: .\scripts\windows\test.ps1
       - run: npm audit --omit=dev --audit-level=moderate
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Ensure Inno Setup is installed
+        shell: powershell
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --version=6.4.3 --yes --no-progress
+            if ($LASTEXITCODE) { throw 'Inno Setup installation failed' }
+          }
+      - name: Build self-contained installer
+        shell: powershell
+        run: .\scripts\windows\build-installer.ps1
+      - name: Test installation and native messaging launcher
+        shell: powershell
+        run: .\scripts\windows\test-installer.ps1
+      - name: Installer checksum
+        shell: powershell
+        run: (Get-FileHash artifacts\BrowserHarnessSetup.exe -Algorithm SHA256).Hash | Set-Content artifacts\SHA256SUM.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BrowserHarness-Windows
+          path: |
+            artifacts/BrowserHarnessSetup.exe
+            artifacts/SHA256SUM.txt

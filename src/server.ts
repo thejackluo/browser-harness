@@ -117,7 +117,7 @@ export function createGateway(options: GatewayOptions) {
       for (const peer of sockets.clients) peer.terminate();
       sockets.close();
       server.closeAllConnections();
-      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      if (server.listening) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     },
   };
 }
