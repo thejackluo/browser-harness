@@ -1,6 +1,13 @@
 :root { color-scheme: dark; font: 14px/1.5 system-ui, sans-serif; }
 body { width: 330px; margin: 0; padding: 20px; background: #141923; color: #e8edf5; }
 h1 { font-size: 20px; margin: 0 0 12px; }
+h2 { font-size: 16px; }
+section { border-top: 1px solid #46546a; padding-top: 10px; margin-top: 12px; }
+[hidden] { display: none !important; }
+input[type="checkbox"] { display: inline; width: auto; }
+#base-url { overflow-wrap: anywhere; user-select: all; }
+.setup-page { width: auto; max-width: 720px; margin: 40px auto; }
+.setup-page li { margin-bottom: 18px; }
 p, small { color: #aab8cc; }
 label { display: block; margin: 14px 0; }
 input, button { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #46546a; border-radius: 6px; font: inherit; }

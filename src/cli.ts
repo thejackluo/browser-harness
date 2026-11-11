@@ -88,7 +88,7 @@ function setupOpencode(): void {
 
 /** Runs the installed Hermes CLI; Windows launchers may be .cmd/.exe shims, so go through cmd there. */
 function hermes(args: string[]): string {
-  const options = { encoding: 'utf8' as const, stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'], timeout: 60_000 };
+  const options = { encoding: 'utf8' as const, stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'], timeout: 60_000, windowsHide: true };
   return process.platform === 'win32'
     ? execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `hermes ${args.join(' ')}`], options)
     : execFileSync('hermes', args, options);

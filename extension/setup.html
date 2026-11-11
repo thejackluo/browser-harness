@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Browser Harness setup</title><link rel="stylesheet" href="popup.css"></head>
+<body class="setup-page">
+  <h1>Get ready once. Then just use the extension.</h1>
+  <ol>
+    <li>Run <strong>BrowserHarnessSetup.exe</strong> from the Windows download. It installs a private background helper for your Windows user; no Node or Git installation is needed.</li>
+    <li>If you have not loaded the extension yet, follow the installer's guide. Chrome requires Developer mode and Load unpacked until a Web Store version is published.</li>
+    <li>Open ChatGPT, sign in normally, choose your model, then open this extension and click <strong>Check again</strong> and <strong>Arm this tab</strong>.</li>
+    <li>Use <strong>Configure Hermes</strong> or <strong>Configure OpenCode</strong> if you have that agent installed. These buttons update the agent's configuration; they do not install or run it.</li>
+  </ol>
+  <p>Keep Chrome and your armed tab open. You do not need a gateway window or a desktop shortcut.</p>
+  <p>If upgrading from the terminal version, close its gateway window once before starting the helper. To update a preview install, rerun the newer installer, reload the extension in <code>chrome://extensions</code>, and refresh your chat tabs.</p>
+  <p>The helper cannot install itself from inside Chrome. If you only received an extension folder, ask its distributor for the matching Windows installer. This project is not yet distributed through the Chrome Web Store.</p>
+</body>
+</html>

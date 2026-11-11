@@ -1,4 +1,8 @@
-export {};
+import { NativeHelper } from './native.js';
+
+const helper = new NativeHelper();
+void helper.start().catch(() => {});
+chrome.runtime.onStartup.addListener(() => { void helper.start().catch(() => {}); });
 
 const ORIGINS = { 'https://chatgpt.com': 'chatgpt', 'https://gemini.google.com': 'gemini' } as const;
 type Provider = typeof ORIGINS[keyof typeof ORIGINS];
@@ -82,8 +86,21 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message.type === 'status') {
     const providers = { chatgpt: summary(sessions.chatgpt), gemini: summary(sessions.gemini) };
     const any = Object.values(providers);
-    respond({ status: `ChatGPT: ${providers.chatgpt.status}\nGemini: ${providers.gemini.status}`, connected: any.some(p => p.connected), busy: any.some(p => p.busy), providers });
+    respond({ status: `ChatGPT: ${providers.chatgpt.status}\nGemini: ${providers.gemini.status}`, connected: any.some(p => p.connected), busy: any.some(p => p.busy), providers, helper: helper.summary() });
     return false;
+  }
+  if (message.type === 'start_helper' || message.type === 'credentials' || message.type === 'configure') {
+    void (async () => {
+      if (message.type === 'configure') {
+        if (message.target !== 'opencode' && message.target !== 'hermes') throw new Error('Choose OpenCode or Hermes.');
+        await helper.configure(message.target);
+        respond({ ok: true });
+      } else {
+        const info = await helper.start();
+        respond(message.type === 'credentials' ? { ok: true, baseURL: info.baseURL, apiKey: info.apiKey } : { ok: true });
+      }
+    })().catch(error => respond({ error: error.message }));
+    return true;
   }
   if (message.type === 'disconnect') {
     for (const [id, session] of Object.entries(sessions)) {
@@ -95,7 +112,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return false;
   }
   if (message.type === 'pair' && (message.token === undefined || typeof message.token === 'string') && typeof message.tabId === 'number') {
-    void pair(message.port, message.token ?? '', message.tabId).then(() => respond({ ok: true })).catch(error => respond({ error: error.message }));
+    void (async () => {
+      const port = message.managed === true ? (await helper.start()).port : message.port;
+      await pair(port, message.token ?? '', message.tabId);
+    })().then(() => respond({ ok: true })).catch(error => respond({ error: error.message }));
     return true;
   }
   return false;

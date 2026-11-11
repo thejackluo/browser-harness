@@ -47,7 +47,8 @@ been copied into this repository.
 
 ## Prerequisites
 
-- Node.js 20.18+ (Node 22 recommended), npm, Chrome 116+.
+- Windows installer: Windows 10/11 x64-compatible and Chrome 116+. It includes its own Node runtime; Git and a terminal are not needed for normal use.
+- Source/development setup: Node.js 20.18+ (Node 22 recommended), npm and Chrome 116+.
 - An account permitted to use the ChatGPT and/or Gemini website in the manner you intend.
 - A dedicated Chrome tab that you will not use for other work while armed.
 
@@ -58,14 +59,49 @@ Stop if your provider does not permit your intended use.
 
 ## Setup
 
-**Windows.** Clone once, then run the helper:
+### Recommended: Windows installer + extension
+
+Run **BrowserHarnessSetup.exe** from the Windows download once. It installs the
+background helper, a private Node runtime and the extension files for your Windows
+user. It needs no admin privileges, Git checkout, Node installation or gateway terminal.
+The installer opens a short Chrome setup guide and the extension folder:
+
+1. Open `chrome://extensions`, enable **Developer mode**, then **Load unpacked**
+   and select the installed `extension` folder. This step is required until a Chrome
+   Web Store version is published; Chrome does not let the helper install itself.
+2. Open ChatGPT, sign in and choose your model. Open Browser Harness → **Arm this tab**.
+   The extension starts the helper automatically. Keep Chrome and the armed tab open.
+3. Click **Configure Hermes** or **Configure OpenCode** in the popup if that agent
+   is installed. No key pasting is needed. These buttons configure, not install or run, agents.
+
+The popup also shows the API URL and a **Copy API key** button for other clients.
+The key is never sent to chat-page content scripts or saved in extension storage.
+The helper listens only on loopback, trusts only this extension, restricts key-file
+permissions and stops when its native Chrome connection closes. Native messages
+allow only connection information and the two fixed configuration actions—not commands.
+
+If the helper is missing, the popup shows a setup guide and **Check again**. If you
+only received an extension folder, obtain the matching installer from its distributor.
+Preview installers are unsigned: Windows may show a publisher/SmartScreen warning;
+verify the source and supplied SHA-256 checksum rather than disabling protections.
+Windows CI builds the installer as the **BrowserHarness-Windows** artifact; private
+repository artifacts require repository access. No public Web Store/release is claimed.
+
+**Upgrading an old terminal install:** close that gateway once, install the new helper,
+remove the old unpacked extension entry and load the installed copy. Future preview
+updates require rerunning the newer installer, reloading the extension and refreshing
+chat tabs. There is no automatic download/execution of extension code.
+
+### Advanced: terminal/source setup
+
+**Windows developers.** Clone once, then run the legacy helper:
 
 ```powershell
 git clone https://github.com/thejackluo/browser-harness.git "$env:USERPROFILE\browser-harness"
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\browser-harness\scripts\windows\setup-and-start.ps1"
 ```
 
-It updates and builds the repo, creates an API key, adds a `browser-harness` provider
+This legacy path updates and builds the repo, creates an API key, adds a `browser-harness` provider
 to your OpenCode config, creates a **Browser Harness** desktop shortcut, and starts the
 gateway. Next time, just double-click the shortcut. Keys live in
 `%USERPROFILE%\.browser-harness\keys.json` (readable by your user only); delete it to
@@ -83,7 +119,8 @@ Then:
    `https://gemini.google.com/app` tab, sign in manually and pick your model, then click
    the Browser Harness extension → **Arm this tab**. Arm one tab per provider. Each
    request clicks New chat there, so leave the tab alone while requests run.
-3. **Connect harnesses:** `npm run setup -- opencode` and/or `npm run setup -- hermes`.
+3. In the popup's **Advanced** section select **Use an existing gateway**. Then
+   connect harnesses: `npm run setup -- opencode` and/or `npm run setup -- hermes`.
 4. **Check everything:** `npm run doctor` lists what works and the next fix.
 
 ```sh
@@ -96,6 +133,15 @@ The gateway binds to `127.0.0.1:4318` (`BROWSER_HARNESS_PORT` changes the port; 
 popup's **Advanced** section has the matching field). `npm start` creates
 `~/.browser-harness/api_key` on first run; set `BROWSER_HARNESS_API_KEY` to use your
 own key instead. Keys and prompts are never logged.
+
+### Build a Windows installer (developers)
+
+Use Node 22, Windows' .NET Framework C# compiler and Inno Setup 6:
+`scripts\windows\build-installer.ps1` builds **artifacts\BrowserHarnessSetup.exe**.
+`scripts\windows\test-installer.ps1` exercises a clean per-user install, the real
+GUI-subsystem launcher/native protocol, authenticated API and uninstall. It refuses
+to overwrite an existing helper registration. `npm run build:desktop` bundles the
+helper and extension without producing a Windows installer on other platforms.
 
 **Pairing security.** The extension manifest carries a public `key`, so its ID is the
 same everywhere (`EXTENSION_ID` in `src/bridge.ts`), and the gateway accepts bridge
