@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Threading.Tasks;
+using System.Threading;
 
 internal static class NativeLauncher
 {
@@ -31,16 +31,41 @@ internal static class NativeLauncher
             };
             using (var child = Process.Start(start))
             {
-                var input = Console.OpenStandardInput().CopyToAsync(child.StandardInput.BaseStream);
-                input.ContinueWith(task => { try { child.StandardInput.Close(); } catch (IOException) {} });
-                var output = child.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput());
-                var error = child.StandardError.BaseStream.CopyToAsync(Stream.Null);
+                Stream childInput = child.StandardInput.BaseStream;
+                var input = new Thread(() => { Pump(Console.OpenStandardInput(), childInput); Close(childInput); }) { IsBackground = true };
+                var output = new Thread(() => Pump(child.StandardOutput.BaseStream, Console.OpenStandardOutput()));
+                var error = new Thread(() => Pump(child.StandardError.BaseStream, Stream.Null)) { IsBackground = true };
+                input.Start();
+                output.Start();
+                error.Start();
                 child.WaitForExit();
-                Task.WaitAll(output, error);
+                output.Join();
                 return child.ExitCode;
             }
         }
         catch { return 1; }
+    }
+
+    // Chrome frames are small; flush every chunk so a buffered pipe never withholds a message.
+    private static void Pump(Stream from, Stream to)
+    {
+        var buffer = new byte[16384];
+        try
+        {
+            int read;
+            while ((read = from.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                to.Write(buffer, 0, read);
+                to.Flush();
+            }
+        }
+        catch (IOException) {}
+        catch (ObjectDisposedException) {}
+    }
+
+    private static void Close(Stream stream)
+    {
+        try { stream.Close(); } catch (IOException) {}
     }
 
     private static string Quote(string value) { return "\"" + value + "\""; }
