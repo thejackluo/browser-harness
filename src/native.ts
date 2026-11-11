@@ -47,6 +47,11 @@ class NativeError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
 
+async function restrictToUser(path: string, grant: string) {
+  await execute('icacls.exe', [path, '/reset'], { windowsHide: true, timeout: 10_000 });
+  await execute('icacls.exe', [path, '/inheritance:r', '/grant:r', grant], { windowsHide: true, timeout: 10_000 });
+}
+
 export async function runNativeHost(input: Readable, output: Writable, options: NativeOptions): Promise<void> {
   if (options.origin !== EXTENSION_ORIGIN) throw new Error('Untrusted extension origin.');
   const home = options.home ?? join(homedir(), '.browser-harness');
@@ -67,10 +72,10 @@ export async function runNativeHost(input: Readable, output: Writable, options: 
       const result = await execute('whoami.exe', ['/user', '/fo', 'csv', '/nh'], { windowsHide: true, timeout: 10_000 });
       sid = /S-1-[\d-]+/.exec(result.stdout)?.[0];
       if (!sid) throw new Error('Could not identify current user.');
-      await execute('icacls.exe', [home, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`], { windowsHide: true, timeout: 10_000 });
+      await restrictToUser(home, `*${sid}:(OI)(CI)F`);
     }
     const apiKey = await runCli(['key']);
-    if (sid) await execute('icacls.exe', [join(home, 'api_key'), '/inheritance:r', '/grant:r', `*${sid}:F`], { windowsHide: true, timeout: 10_000 });
+    if (sid) await restrictToUser(join(home, 'api_key'), `*${sid}:F`);
     gateway = createGateway({ apiKey, port: options.port ?? 4318 });
     try {
       const port = await gateway.listen();
